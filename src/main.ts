@@ -32,6 +32,7 @@ import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
 import { sessionPageHandlers } from './services/sessionPageHandlers';
+import { WebViewHolders } from './services/webViewHolders';
 import { UnreadableBooksError } from './types/analysis-repository';
 import { emptyAnalysis } from './types/empty-factories';
 import {
@@ -66,15 +67,7 @@ export interface InterlinearizerOpenOptions
 /** Tab title used when there is no project to name. */
 const baseTabTitle = 'Interlinearizer';
 
-/**
- * The tab that holds each project: the first one served while no other tab holds it. Opening the
- * project again brings the holder to front. A second tab that a layout restores shows only a notice
- * that points at the holder, until the holder closes and the second tab takes the project over.
- */
-const openWebViewsByProject = new Map<string, string>();
-
-/** The duplicate tabs of each project, which show only the notice until their holder closes. */
-const duplicateWebViewsByProject = new Map<string, Set<string>>();
+const webViewHolders = new WebViewHolders();
 
 /** WebView provider that provides the Interlinearizer React WebView when Platform.Bible requests it. */
 const mainWebViewProvider: IWebViewProvider = {
@@ -97,16 +90,8 @@ const mainWebViewProvider: IWebViewProvider = {
     }
     const projectId = openWebViewOptions?.projectId ?? savedWebView.projectId;
     // A duplicate is served inert because the platform offers no way to close a tab.
-    const holder = projectId === undefined ? undefined : openWebViewsByProject.get(projectId);
-    const duplicateOf = holder !== undefined && holder !== savedWebView.id ? holder : undefined;
-    if (projectId !== undefined && duplicateOf === undefined) {
-      openWebViewsByProject.set(projectId, savedWebView.id);
-      duplicateWebViewsByProject.get(projectId)?.delete(savedWebView.id);
-    }
-    if (projectId !== undefined && duplicateOf !== undefined) {
-      const duplicates = duplicateWebViewsByProject.get(projectId) ?? new Set<string>();
-      duplicateWebViewsByProject.set(projectId, duplicates.add(savedWebView.id));
-    }
+    const duplicateOf =
+      projectId === undefined ? undefined : webViewHolders.claim(projectId, savedWebView.id);
     const state: Record<string, unknown> = { ...savedWebView.state };
     delete state.duplicateOf;
     return {
@@ -213,7 +198,7 @@ async function openInterlinearizer(
 
   if (!resolvedProjectId) return undefined;
 
-  const existingId = openWebViewsByProject.get(resolvedProjectId);
+  const existingId = webViewHolders.holderOf(resolvedProjectId);
   // Computed only when this open creates a tab: focusing an existing tab must not reset an offer or
   // a project the user may already be looking at.
   const seededState =
@@ -288,6 +273,20 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
   return openInterlinearizer(webViewDefinition?.projectId, webViewId);
 }
 
+/**
+ * Logs a failed command under `description` and sends `message` as its error notification. The
+ * frontend can then suppress the error without a second notification.
+ */
+async function reportFailure(e: unknown, description: string, message: LocalizeKey): Promise<void> {
+  logger.error(`Interlinearizer: failed to ${description}`, e);
+  await papi.notifications.send({ message, severity: 'error' }).catch(() => {});
+}
+
+/** Builds a rejection handler that logs the rejection as a warning under `message`. */
+function warnOnFailure(message: string): (e: unknown) => void {
+  return (e) => logger.warn(message, e);
+}
+
 async function createInterlinearProject(
   sourceProjectId: string,
   analysisLanguages: string[],
@@ -306,13 +305,7 @@ async function createInterlinearProject(
     );
     return JSON.stringify(toProjectSummary(project));
   } catch (e) {
-    logger.error('Interlinearizer: failed to create project', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_create_project_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
+    await reportFailure(e, 'create project', '%interlinearizer_error_create_project_failed%');
     throw e;
   }
 }
@@ -321,13 +314,7 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
   try {
     await projectStorage.deleteProject(executionToken, interlinearProjectId);
   } catch (e) {
-    logger.error('Interlinearizer: failed to delete project', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_delete_project_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
+    await reportFailure(e, 'delete project', '%interlinearizer_error_delete_project_failed%');
     throw e;
   }
 }
@@ -348,13 +335,11 @@ async function updateProjectMetadata(
     );
     return updated ? JSON.stringify(toProjectSummary(updated)) : undefined;
   } catch (e) {
-    logger.error('Interlinearizer: failed to update project metadata', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_update_project_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
+    await reportFailure(
+      e,
+      'update project metadata',
+      '%interlinearizer_error_update_project_failed%',
+    );
     throw e;
   }
 }
@@ -390,13 +375,11 @@ async function importPt9Project(sourceProjectId: string): Promise<string> {
     }
     return JSON.stringify(result);
   } catch (e) {
-    logger.error('Interlinearizer: failed to import Paratext 9 interlinear data', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_pt9Import_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
+    await reportFailure(
+      e,
+      'import Paratext 9 interlinear data',
+      '%interlinearizer_error_pt9Import_failed%',
+    );
     throw e;
   }
 }
@@ -415,28 +398,13 @@ async function createEditableCopy(
     );
     return JSON.stringify(toProjectSummary(project));
   } catch (e) {
-    logger.error('Interlinearizer: failed to create an editable copy', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_createEditableCopy_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
+    await reportFailure(
+      e,
+      'create an editable copy',
+      '%interlinearizer_error_createEditableCopy_failed%',
+    );
     throw e;
   }
-}
-
-/**
- * Logs a failed save under `description` and sends `message` as its error notification, so the
- * frontend `catch` block can suppress the error without a second notification.
- */
-async function reportSaveFailure(
-  e: unknown,
-  description: string,
-  message: LocalizeKey,
-): Promise<void> {
-  logger.error(`Interlinearizer: failed to ${description}`, e);
-  await papi.notifications.send({ message, severity: 'error' }).catch(() => {});
 }
 
 /**
@@ -526,7 +494,7 @@ async function saveDraftToProject(
       logger.error('Interlinearizer: failed to save the draft to a project', e);
       await reportUnreadableBooks(e.books, '%interlinearizer_error_save_unreadableBooks%', 'error');
     } else
-      await reportSaveFailure(
+      await reportFailure(
         e,
         'save the draft to a project',
         '%interlinearizer_error_save_analysis_failed%',
@@ -574,7 +542,7 @@ async function saveDraftAsProject(
       return JSON.stringify(saved);
     });
   } catch (e) {
-    await reportSaveFailure(
+    await reportFailure(
       e,
       'save the draft as a new project',
       '%interlinearizer_error_create_project_failed%',
@@ -671,10 +639,7 @@ async function startDraftOver({
       projectStorage.startDraftOver(executionToken, sourceProjectId, draft),
     );
   } catch (e) {
-    logger.error('Interlinearizer: failed to save draft', e);
-    await papi.notifications
-      .send({ message: '%interlinearizer_error_save_draft_failed%', severity: 'error' })
-      .catch(() => {});
+    await reportFailure(e, 'save draft', '%interlinearizer_error_save_draft_failed%');
     throw e;
   }
 }
@@ -856,9 +821,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   // through the update its provider call triggers.
   function trackWebView({ webView }: { webView: SavedWebViewDefinition }): void {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
-    const holder = openWebViewsByProject.get(webView.projectId);
-    if (holder !== undefined && holder !== webView.id) return;
-    openWebViewsByProject.set(webView.projectId, webView.id);
+    if (!webViewHolders.hold(webView.projectId, webView.id)) return;
     rememberActiveProject(webView.projectId, webView.state);
   }
   const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(trackWebView);
@@ -867,20 +830,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
     const { projectId } = webView;
-    const duplicates = duplicateWebViewsByProject.get(projectId);
-    duplicates?.delete(webView.id);
-    if (openWebViewsByProject.get(projectId) !== webView.id) return;
+    const released = webViewHolders.release(projectId, webView.id);
+    if (!released) return;
     rememberActiveProject(projectId, webView.state);
-    openWebViewsByProject.delete(projectId);
     bookService.closeProject(projectId);
-    // A duplicate takes the project over, served afresh now that no tab holds it. The duplicate
-    // stays registered until it is served as the holder. A failed reload leaves it for the next
-    // holder's close.
-    const [successor] = duplicates ?? [];
-    if (successor === undefined) return;
+    // A duplicate takes the project over, served afresh now that no tab holds it. A failed reload
+    // leaves the duplicate waiting for the next holder to close.
+    if (released.successor === undefined) return;
     papi.webViews
-      .reloadWebView(mainWebViewType, successor, { bringToFront: false })
-      .catch((e) => logger.warn(`Interlinearizer: could not hand ${projectId} to another tab`, e));
+      .reloadWebView(mainWebViewType, released.successor, { bringToFront: false })
+      .catch(warnOnFailure(`Interlinearizer: could not hand ${projectId} to another tab`));
   });
   // Added ahead of the registrations below, so a failure among them still disposes these.
   context.registrations.add(
@@ -926,20 +885,18 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
     activeSessions
       .reanchorBook(sourceProjectId, book, edited)
-      .catch((e) =>
-        logger.warn(
+      .catch(
+        warnOnFailure(
           `Interlinearizer: could not re-anchor ${book.bookRef} of project ${sourceProjectId}`,
-          e,
         ),
       ),
   );
   const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) =>
     activeSessions
       .reanchorMissingBooks(sourceProjectId, textBookIds)
-      .catch((e) =>
-        logger.warn(
+      .catch(
+        warnOnFailure(
           `Interlinearizer: could not re-anchor the books project ${sourceProjectId} lacks`,
-          e,
         ),
       ),
   );
@@ -947,20 +904,18 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     (sourceProjectId, formsChanged) =>
       activeSessions
         .reportTextReadProgress(sourceProjectId, formsChanged)
-        .catch((e) =>
-          logger.warn(
+        .catch(
+          warnOnFailure(
             `Interlinearizer: could not report how far the text of project ${sourceProjectId} is read`,
-            e,
           ),
         ),
   );
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
     activeSessions
       .reportScriptureEdit(sourceProjectId, bookId)
-      .catch((e) =>
-        logger.warn(
+      .catch(
+        warnOnFailure(
           `Interlinearizer: could not report the edit to ${bookId} of project ${sourceProjectId}`,
-          e,
         ),
       ),
   );
@@ -1106,8 +1061,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
  * @returns True to indicate successful deactivation; the platform may use this for logging.
  */
 export async function deactivate(): Promise<boolean> {
-  openWebViewsByProject.clear();
-  duplicateWebViewsByProject.clear();
+  webViewHolders.clear();
   logger.debug('Interlinearizer extension is deactivating!');
   return true;
 }

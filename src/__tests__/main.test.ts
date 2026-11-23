@@ -840,32 +840,6 @@ describe('main', () => {
       expect(result?.state).toEqual({ duplicateOf: 'tab-a' });
     });
 
-    it('gives the project to the first tab it serves for it', async () => {
-      await activate(createTestActivationContext());
-      const provider = getRegisteredProvider();
-
-      await provider.getWebView({ id: 'tab-a', webViewType: mainWebViewType }, myProjectOptions);
-      const second = await provider.getWebView(
-        { id: 'tab-b', webViewType: mainWebViewType },
-        myProjectOptions,
-      );
-
-      expect(second?.state).toEqual({ duplicateOf: 'tab-a' });
-    });
-
-    it('serves a tab asked for again as itself', async () => {
-      await activate(createTestActivationContext());
-      const provider = getRegisteredProvider();
-
-      await provider.getWebView({ id: 'tab-a', webViewType: mainWebViewType }, myProjectOptions);
-      const again = await provider.getWebView(
-        { id: 'tab-a', webViewType: mainWebViewType },
-        myProjectOptions,
-      );
-
-      expect(again?.state).toEqual({});
-    });
-
     it('lets a duplicate take the project once the tab holding it closes', async () => {
       await activate(createTestActivationContext());
       const provider = getRegisteredProvider();
@@ -938,7 +912,7 @@ describe('main', () => {
         );
       });
 
-      it('hands the project to a duplicate whose reload failed once the next holder closes', async () => {
+      it('retries serving a duplicate whose reload failed once the next holder closes', async () => {
         __mockReloadWebView.mockRejectedValueOnce(new Error('gone')).mockResolvedValue('tab-b');
         await serveDuplicate();
         close('tab-a');
@@ -946,11 +920,11 @@ describe('main', () => {
           { id: 'tab-c', webViewType: mainWebViewType },
           myProjectOptions,
         );
-        __mockReloadWebView.mockClear();
 
         close('tab-c');
 
-        expect(__mockReloadWebView).toHaveBeenCalledWith(mainWebViewType, 'tab-b', {
+        expect(__mockReloadWebView).toHaveBeenCalledTimes(2);
+        expect(__mockReloadWebView).toHaveBeenLastCalledWith(mainWebViewType, 'tab-b', {
           bringToFront: false,
         });
       });
@@ -1324,22 +1298,32 @@ describe('main', () => {
         );
       });
 
-      it('keeps the project on the tab holding it when a duplicate reports an update', async () => {
-        __mockSelectProject.mockResolvedValue('my-project');
+      it('leaves the remembered active project alone when a duplicate reports an update', async () => {
+        const activeProject = toProjectSummary(makeStubProject('interlinear-1'));
         await activate(createTestActivationContext());
         getUpdateWebViewCallback()({
-          webView: { id: 'tab-a', webViewType: mainWebViewType, projectId: 'my-project' },
+          webView: {
+            id: 'tab-a',
+            webViewType: mainWebViewType,
+            projectId: 'my-project',
+            state: { activeProject },
+          },
         });
 
         getUpdateWebViewCallback()({
-          webView: { id: 'tab-b', webViewType: mainWebViewType, projectId: 'my-project' },
+          webView: {
+            id: 'tab-b',
+            webViewType: mainWebViewType,
+            projectId: 'my-project',
+            state: {},
+          },
         });
 
-        await findRegisteredHandler('interlinearizer.openForWebView')?.();
-        expect(__mockOpenWebView).toHaveBeenCalledWith(
-          mainWebViewType,
-          undefined,
-          expect.objectContaining({ existingId: 'tab-a' }),
+        expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledTimes(1);
+        expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledWith(
+          expect.anything(),
+          'my-project',
+          'interlinear-1',
         );
       });
 

@@ -2554,6 +2554,7 @@ describe('InterlinearizerLoader', () => {
       mockBookData({ book: ALPHA_BETA_BOOK });
       jest.useFakeTimers();
       await flushHost(async () => renderLoader());
+      expect(capturedInterlinearizerProps).toBeDefined();
       await flushHost(() => capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6'));
       act(() => jest.advanceTimersByTime(300));
       fireEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2586,6 +2587,7 @@ describe('InterlinearizerLoader', () => {
         ),
       );
       mockSendCommand.mockClear();
+      expect(capturedInterlinearizerProps).toBeDefined();
 
       await flushHost(() => {
         capturedInterlinearizerProps?.segmentationDispatch.merge('GEN 1:2:0');

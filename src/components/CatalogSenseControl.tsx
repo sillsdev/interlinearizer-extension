@@ -12,13 +12,19 @@ import {
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
   type ReactElement,
   type ReactNode,
 } from 'react';
-import { useLexiconSearch, useLinkedGloss, type LinkedGloss } from './LexiconSenses';
+import {
+  useEntrySenses,
+  useLexiconSearch,
+  useLinkedGloss,
+  type LinkedGloss,
+} from './LexiconSenses';
 import LocalizedTooltip from './LocalizedTooltip';
 import { multiStringTextByLanguage } from '../utils/multi-string';
 
@@ -47,7 +53,10 @@ export const SENSE_CONTROL_STRING_KEYS = [
 /** What the popover is showing. */
 type View = 'menu' | 'search' | 'confirmUnlink';
 
-/** How a candidate search stands. */
+/** Fetches the senses to pick from, `undefined` meaning there are none. */
+type FindCandidates = () => Promise<SenseCandidate[] | undefined>;
+
+/** How fetching the candidates stands. */
 type SearchOutcome =
   | { status: 'pending' }
   | { status: 'failed' }
@@ -164,49 +173,48 @@ function CandidateButton({
 }
 
 /**
- * Searches for the senses that `form` could link to. The outcome shows only an answer for the
- * current form and `search`, from a search started since the last `retry`. Until such an answer
- * arrives, the outcome reads pending. Without `search`, the outcome stays pending.
+ * Fetches the senses to pick from through `find`. The outcome shows only an answer from the current
+ * `find`, fetched since the last `retry`. Until such an answer arrives, the outcome reads pending.
+ * Without `find`, the outcome stays pending.
  *
- * @returns The outcome, and `retry`, which searches again.
+ * @returns The outcome, and `retry`, which fetches again.
  */
-function useCandidateSearch(
-  form: string,
-  search: ((form: string) => Promise<SenseCandidate[]>) | undefined,
-): { outcome: SearchOutcome; retry: () => void } {
+function useCandidates(find: FindCandidates | undefined): {
+  outcome: SearchOutcome;
+  retry: () => void;
+} {
   const [attempt, setAttempt] = useState(0);
   const [answer, setAnswer] = useState<{
-    form: string;
-    search: (form: string) => Promise<SenseCandidate[]>;
+    find: FindCandidates;
     attempt: number;
     outcome: SearchOutcome;
   }>();
 
   useEffect(() => {
-    if (!search) return undefined;
+    if (!find) return undefined;
     let abandoned = false;
     (async () => {
       let outcome: SearchOutcome;
       try {
-        outcome = { status: 'found', candidates: await search(form) };
+        outcome = { status: 'found', candidates: (await find()) ?? [] };
       } catch {
         outcome = { status: 'failed' };
       }
-      if (!abandoned) setAnswer({ form, search, attempt, outcome });
+      if (!abandoned) setAnswer({ find, attempt, outcome });
     })();
     return () => {
       abandoned = true;
     };
-  }, [form, search, attempt]);
+  }, [find, attempt]);
 
-  const current = answer?.form === form && answer.search === search && answer.attempt === attempt;
+  const current = find !== undefined && answer?.find === find && answer.attempt === attempt;
   return {
     outcome: current ? answer.outcome : { status: 'pending' },
     retry: () => setAttempt((previous) => previous + 1),
   };
 }
 
-/** The senses a search turned up, listed to pick from. */
+/** Lists the fetched senses to pick from. */
 function SearchView({
   outcome,
   senseRef,
@@ -270,15 +278,14 @@ function SearchView({
  * The contents of the control's popover: the actions on the link, the senses to pick from, or the
  * question of what to keep on unlinking.
  *
- * The change of sense is disabled when the only sense the lexicon finds for `form` is the linked
- * one.
+ * The candidates are fetched as the popover opens. The change of sense is disabled when the linked
+ * sense's entry has no other sense.
  */
 function PopoverBody({
-  form,
-  search,
+  find,
   senseRef,
   link,
-  canLink,
+  canPick,
   canUnlink,
   canAdopt,
   analysisLanguage,
@@ -288,11 +295,12 @@ function PopoverBody({
   onAdopt,
   onClose,
 }: Readonly<{
-  form: string;
-  search: ((form: string) => Promise<SenseCandidate[]>) | undefined;
+  /** Fetches the senses to link to, or to change the link to. */
+  find: FindCandidates | undefined;
   senseRef?: SenseRef;
   link: LinkedGloss;
-  canLink: boolean;
+  /** Whether the action that links, or changes the link, is offered. */
+  canPick: boolean;
   canUnlink: boolean;
   canAdopt: boolean;
   analysisLanguage: string;
@@ -303,16 +311,16 @@ function PopoverBody({
   onClose: () => void;
 }>) {
   const [view, setView] = useState<View>('menu');
-  const { outcome, retry } = useCandidateSearch(form, canLink ? search : undefined);
+  const { outcome, retry } = useCandidates(find);
 
   const linked = senseRef !== undefined;
-  const onlyCurrent =
+  const noOther =
+    linked &&
     outcome.status === 'found' &&
-    outcome.candidates.length > 0 &&
     outcome.candidates.every((candidate) => sameSense(senseRef, candidate.senseRef));
 
   let content: ReactNode;
-  if ((view === 'search' || !linked) && canLink)
+  if ((view === 'search' || !linked) && canPick)
     content = (
       <SearchView
         analysisLanguage={analysisLanguage}
@@ -371,15 +379,15 @@ function PopoverBody({
             )}
           </p>
         )}
-        {canLink && (
+        {canPick && (
           <DisabledActionTooltip
             className="tw:flex tw:flex-col"
-            disabled={onlyCurrent}
+            disabled={noOther}
             tooltipText={localizedStrings['%interlinearizer_analysisCatalog_senseNoOther%']}
           >
             <Button
               className="tw:justify-start"
-              disabled={onlyCurrent}
+              disabled={noOther}
               size="sm"
               variant="ghost"
               onClick={() => {
@@ -434,7 +442,9 @@ function PopoverBody({
  * the sense search at once, because linking is the only action. Where there is nothing to do, a
  * linked form shows only the mark, and an unlinked one shows nothing.
  *
- * Candidates are searched by `form` as it stands, so a form with no text cannot be linked.
+ * An unlinked form links to a sense that a search by `form` turns up, so a form with no text cannot
+ * be linked. A linked form changes to another sense of the linked sense's entry. Linking it to
+ * another entry means unlinking it first.
  */
 export default function CatalogSenseControl({
   form,
@@ -471,22 +481,33 @@ export default function CatalogSenseControl({
 }>): ReactElement | undefined {
   const link = useLinkedGloss(gloss, senseRef, analysisLanguage);
   const search = useLexiconSearch();
+  const listEntrySenses = useEntrySenses();
   const [open, setOpen] = useState(false);
   // eslint-disable-next-line no-null/no-null
   const menuRef = useRef<HTMLDivElement>(null);
 
   const linked = senseRef !== undefined;
-  const canLink = !readOnly && search !== undefined && form !== '';
+  const canLink = !readOnly && !linked && search !== undefined && form !== '';
+  const canChange = !readOnly && link.senseFound;
   const canUnlink = !readOnly && linked && link.lexiconAnswered;
   const canAdopt =
     !readOnly && linked && link.senseGloss !== '' && (link.fromLexicon || link.differs);
+
+  const findToLink = useMemo(
+    () => (canLink && search ? () => search(form) : undefined),
+    [canLink, search, form],
+  );
+  const findToChange = useMemo(
+    () => (canChange && senseRef ? () => listEntrySenses(senseRef) : undefined),
+    [canChange, senseRef, listEntrySenses],
+  );
 
   if (!linked && !canLink) return undefined;
 
   const label = linked
     ? linkLabel(link, localizedStrings)
     : localizedStrings['%interlinearizer_analysisCatalog_senseAddLink%'];
-  if (!canLink && !canUnlink && !canAdopt)
+  if (!canLink && !canChange && !canUnlink && !canAdopt)
     return <StaticMark className={className} label={label} link={link} style={style} />;
 
   const Icon = linked ? linkIcon(link) : BookOpen;
@@ -528,12 +549,11 @@ export default function CatalogSenseControl({
             <PopoverBody
               analysisLanguage={analysisLanguage}
               canAdopt={canAdopt}
-              canLink={canLink}
+              canPick={canLink || canChange}
               canUnlink={canUnlink}
-              form={form}
+              find={linked ? findToChange : findToLink}
               link={link}
               localizedStrings={localizedStrings}
-              search={search}
               senseRef={senseRef}
               onAdopt={onAdopt}
               onClose={() => setOpen(false)}

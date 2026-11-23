@@ -194,6 +194,15 @@ function createResolver(lexiconCode?: string): LexiconResolver {
       return sense ? toResolvedSense(sense) : undefined;
     },
 
+    listEntrySenses: async (ref) => {
+      if (!lexiconCode || ref.projectId !== lexiconCode) return undefined;
+      const service = await getEntryService();
+      const sense = await service?.getSense(lexiconCode, ref.senseId);
+      if (!service || !sense) return undefined;
+      const entry = await service.getEntry(lexiconCode, sense.entryId);
+      return entry ? toCandidates(entry, lexiconCode) : undefined;
+    },
+
     searchByForm: async (form, options) => {
       if (!lexiconCode) return [];
       const entries =

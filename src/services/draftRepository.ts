@@ -660,8 +660,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Deletes the shards of the `wiped` books. A deleted book's shard is also dropped from
-   * {@link shardContents}. A failed deletion is logged, not thrown.
+   * Deletes the shards of the `wiped` books. A failed deletion is logged, not thrown, and a later
+   * save retries it.
    *
    * @returns The books whose shard could not be deleted.
    */

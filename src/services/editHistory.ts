@@ -146,13 +146,14 @@ export class EditHistory {
   /**
    * Applies `changes` as one undo step. Marks the draft unsaved unless `options` says otherwise.
    *
-   * @returns The changes that restore what `changes` replaced.
+   * @returns What the repository reports that the apply changed, with the changes that restore what
+   *   it replaced.
    * @throws Whatever applying the changes throws; the history is left as it was.
    * @throws Whatever marking the draft saved throws; the changes stay applied as an undo step.
    */
-  async apply(changes: ChangeSet, options?: EditOptions): Promise<ChangeSet> {
+  async apply(changes: ChangeSet, options?: EditOptions): Promise<AppliedChange> {
     const keep = options?.unsavedMark === 'keep';
-    const { inverse, wasDirty } = await this.repository.apply(changes, {
+    const { inverse, applied, wasDirty } = await this.repository.apply(changes, {
       ...(keep && { keepDirty: true }),
       ...(options?.unanchored && { unanchored: options.unanchored }),
     });
@@ -171,7 +172,7 @@ export class EditHistory {
     this.state = this.lastState;
     if (keep && !wasDirty) this.addCleanState();
     if (options?.unsavedMark === 'clear') await this.markRestoredClean();
-    return inverse;
+    return { changes: applied, inverse };
   }
 
   /**
@@ -210,20 +211,20 @@ export class EditHistory {
    * The pass is no undo step and leaves the draft as saved or unsaved as it was. A missing book is
    * passed as a book with no segments.
    *
-   * @returns The changes applied, with their inverse: the changes that undo them. `undefined` when
-   *   there are no changes to apply.
+   * @returns What the repository reports that the pass changed, with their inverse: the changes
+   *   that undo them. `undefined` when there are no changes to apply.
    * @throws Whatever applying the changes throws; nothing is applied or recorded.
    */
   async applyPass(
     book: ReadonlyBook,
     changes: ChangeSet | undefined,
   ): Promise<AppliedChange | undefined> {
-    const { inverse } = await this.repository.apply(changes ?? { intent: REANCHOR_INTENT }, {
-      keepDirty: true,
-      anchoredTo: { bookCode: book.bookRef, textVersion: book.textVersion },
-    });
+    const { inverse, applied } = await this.repository.apply(
+      changes ?? { intent: REANCHOR_INTENT },
+      { keepDirty: true, anchoredTo: { bookCode: book.bookRef, textVersion: book.textVersion } },
+    );
     this.recordPass(book);
-    return changes && { changes, inverse };
+    return changes && { changes: applied, inverse };
   }
 
   /**
@@ -237,9 +238,9 @@ export class EditHistory {
   /**
    * Reverts the latest edit not yet undone, re-anchoring what it restores.
    *
-   * @returns The changes that reverted the edit and re-anchored what the undo restored, with what
-   *   restores what they replaced. The move also carries the step that the edit was recorded as,
-   *   and whether it left the draft unsaved. `undefined` when there is none.
+   * @returns What the repository reports that the undo changed, re-anchoring included, with what
+   *   restores what it replaced. The move also carries the step that the edit was recorded as, and
+   *   whether it left the draft unsaved. `undefined` when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to undo.
    * @throws Whatever marking the draft saved throws; the undo stays applied.
@@ -251,9 +252,9 @@ export class EditHistory {
   /**
    * Redoes the latest undone edit, re-anchoring what it restores.
    *
-   * @returns The changes that redid the edit and re-anchored what the redo restored, with what
-   *   restores what they replaced. The move also carries the step that the edit was recorded as,
-   *   and whether it left the draft unsaved. `undefined` when there is none.
+   * @returns What the repository reports that the redo changed, re-anchoring included, with what
+   *   restores what it replaced. The move also carries the step that the edit was recorded as, and
+   *   whether it left the draft unsaved. `undefined` when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to redo.
    * @throws Whatever marking the draft saved throws; the redo stays applied.
@@ -278,7 +279,7 @@ export class EditHistory {
         ? await this.reanchorBooks(step.changes, books)
         : undefined;
     const changes = reanchored ? mergeChangeSets(step.changes, reanchored) : step.changes;
-    const { inverse, wasDirty } = await this.repository.apply(changes);
+    const { inverse, applied, wasDirty } = await this.repository.apply(changes);
     this.appliedCount += 1;
     this.noteMark(wasDirty);
     from.pop();
@@ -292,7 +293,7 @@ export class EditHistory {
     this.forgetUnneededPasses();
     const clean = this.cleanStates.has(this.state);
     if (clean) await this.repository.markClean();
-    return { changes, inverse, ...(step.step && { step: step.step }), dirty: !clean };
+    return { changes: applied, inverse, ...(step.step && { step: step.step }), dirty: !clean };
   }
 
   /**

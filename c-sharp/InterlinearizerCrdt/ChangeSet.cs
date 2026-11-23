@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Interlinearizer.Crdt.Entities;
 
 namespace Interlinearizer.Crdt;
@@ -14,18 +15,24 @@ public record RecordChanges<T>(IReadOnlyList<T> Puts, IReadOnlyList<Guid> Delete
 /// <summary>
 /// One command's changes, applied all-or-nothing. A record kind it leaves alone is absent, and an
 /// id appears at most once in every kind's puts and deletes together, since Harmony keeps every
-/// entity in one table.
+/// entity in one table. An absent kind is left off the wire, as the TypeScript seam expects.
 /// </summary>
 public record ChangeSet
 {
     /// <summary>Names the command that made the changes.</summary>
     public required string Intent { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RecordChanges<SegmentAnalysis>? SegmentAnalyses { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RecordChanges<SegmentAnalysisLink>? SegmentAnalysisLinks { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RecordChanges<TokenAnalysis>? TokenAnalyses { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RecordChanges<TokenAnalysisLink>? TokenAnalysisLinks { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RecordChanges<PhraseAnalysis>? PhraseAnalyses { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RecordChanges<PhraseAnalysisLink>? PhraseAnalysisLinks { get; init; }
 }
 

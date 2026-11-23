@@ -60,11 +60,11 @@ public abstract class CrdtTestBase : IAsyncDisposable
     /// <summary>The projects of the database.</summary>
     protected InterlinearProjects Projects => new(DataModel, DbContext, new ClientIdentity(ClientId));
 
-    /// <summary>Applies through the repository at the next commit time.</summary>
-    protected async Task ApplyNext(ChangeSet changes, PutMode putMode = PutMode.Replace)
+    /// <summary>Applies through the repository at the next commit time, returning what the apply reports.</summary>
+    protected Task<ChangeSet> ApplyNext(ChangeSet changes, PutMode putMode = PutMode.Replace)
     {
         _timeProvider.SetNextDateTime(NextDate());
-        await Repository.Apply(changes, putMode);
+        return Repository.Apply(changes, putMode);
     }
 
     /// <summary>The time the next commit will be made at, one day after the last.</summary>

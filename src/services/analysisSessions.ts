@@ -322,14 +322,14 @@ async function applyStaged(
   const { unsavedMark } = options;
   const step = typeof options.step === 'function' ? options.step(changes) : options.step;
   const unanchored = reanchorTo?.map(({ bookRef }) => bookRef);
-  const inverse = await session.history.apply(changes, {
+  const applied = await session.history.apply(changes, {
     unsavedMark,
     step,
     ...(unanchored && { unanchored }),
   });
   unanchored?.forEach((bookCode) => storedVersions?.delete(bookCode));
   if (unsavedMark) await noteIfEmpty(session);
-  return { changes, inverse, ...(step && { step }) };
+  return { ...applied, ...(step && { step }) };
 }
 
 async function noteIfEmpty(session: Session): Promise<void> {

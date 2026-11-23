@@ -164,68 +164,9 @@ type BookShard = LoadedShard & { bookCode: string };
 /** A sharded draft's envelope, its analysis still to be read from the shards its manifest names. */
 type ShardedEnvelope = { draft: DraftProject; analysisBooks: string[] };
 
-/** What a save writes and deletes. */
-interface ShardWritePlan {
-  /** Books whose shard the save deletes once the envelope stops naming them. */
-  wiped: string[];
-  /** Books the save carries that the stored manifest does not name. */
-  stranded: string[];
-  /** Books whose shard the save rewrites. */
-  unsettled: string[];
-  /** Each compared partition, serialized. */
-  shards: { bookCode: string; json: string; changed: boolean }[];
-}
-
 /** Names a draft in the messages logged while it loads. */
 function describeLoadedDraft(sourceProjectId: string): string {
   return `draft for source project ${sourceProjectId} on load`;
-}
-
-/**
- * Decides which shards a save writes and deletes, comparing `partitions` against what was last
- * loaded or saved.
- *
- * @param saved - Each book's shard as last loaded or saved, serialized.
- * @param unreadable - Books whose shard the last load could not use. The save keeps their shards.
- * @param storedBooks - The books the stored draft's manifest names.
- * @param journaled - The shard journal as stored before the save.
- * @param books - The key of every partition the draft carries, less the books in `unreadable`.
- * @param partitions - Keyed by book; every key is in `books`.
- */
-function planShardWrite(
-  saved: ReadonlyMap<string, string>,
-  unreadable: ReadonlySet<string>,
-  storedBooks: readonly string[],
-  journaled: ShardJournal,
-  books: readonly string[],
-  partitions: ReadonlyMap<string, TextAnalysis>,
-): ShardWritePlan {
-  const carried = new Set(books);
-
-  // Books this save no longer carries, less those held back because the load could not read them.
-  // The stored manifest and the journal also list shards the load did not see, such as one
-  // awaiting deletion. A journaled addition whose shard never landed deletes as a no-op.
-  const knownShards = new Set([
-    ...saved.keys(),
-    ...storedBooks,
-    ...journaled.adding,
-    ...journaled.removing,
-  ]);
-  const wiped = [...knownShards].filter(
-    (bookCode) => !carried.has(bookCode) && !unreadable.has(bookCode),
-  );
-
-  const shards = perfTime('saveDraft:compare', () =>
-    [...partitions].map(([bookCode, partition]) => {
-      const json = JSON.stringify(partition);
-      return { bookCode, json, changed: saved.get(bookCode) !== json };
-    }),
-  );
-
-  // A book the stored manifest already names is not stranded: the manifest alone keeps it reachable.
-  const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
-  const unsettled = shards.filter(({ changed }) => changed).map(({ bookCode }) => bookCode);
-  return { wiped, stranded, unsettled, shards };
 }
 
 /**
@@ -571,14 +512,31 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     partitions: ReadonlyMap<string, TextAnalysis>,
   ): Promise<void> {
     const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
-    const { wiped, stranded, unsettled, shards } = planShardWrite(
-      saved,
-      unreadable,
-      storedBooks,
-      journaled,
-      books,
-      partitions,
+    const carried = new Set(books);
+
+    // Books this save no longer carries, less those held back because the load could not read them.
+    // The stored manifest and the journal also list shards the load did not see, such as one
+    // awaiting deletion. A journaled addition whose shard never landed deletes as a no-op.
+    const knownShards = new Set([
+      ...saved.keys(),
+      ...storedBooks,
+      ...journaled.adding,
+      ...journaled.removing,
+    ]);
+    const wiped = [...knownShards].filter(
+      (bookCode) => !carried.has(bookCode) && !unreadable.has(bookCode),
     );
+
+    const shards = perfTime('saveDraft:compare', () =>
+      [...partitions].map(([bookCode, partition]) => {
+        const json = JSON.stringify(partition);
+        return { bookCode, json, changed: saved.get(bookCode) !== json };
+      }),
+    );
+
+    // A book the stored manifest already names is not stranded: the manifest alone keeps it reachable.
+    const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
+    const unsettled = shards.filter(({ changed }) => changed).map(({ bookCode }) => bookCode);
 
     // Journal every shard this save could strand or leave half-written before writing any.
     await perfTimeAsync('saveDraft:write', () =>

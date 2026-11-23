@@ -203,9 +203,12 @@ export async function readBookOutline(
   verseBook: ReadonlyBook,
 ): Promise<BookOutline> {
   const { summary, placed } = await readStale(repository, book);
-  const { tokenSegmentMap } = bookIndexesOf(book.segments);
+  const { tokenSegmentMap, tokenDocOrder } = bookIndexesOf(book.segments);
   const glossSegments = new Set(
-    [...summary.glosses, ...summary.phrases].map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)),
+    [
+      ...summary.glosses,
+      ...summary.phrases.filter(({ tokenRef }) => tokenDocOrder.has(tokenRef)),
+    ].map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)),
   );
   const translationSegments = new Set(summary.freeTranslations.map(({ segmentId }) => segmentId));
   const outline = buildBookOutline(book, book.segments);

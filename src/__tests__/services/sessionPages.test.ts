@@ -273,6 +273,18 @@ describe('readBookOutline stale flags', () => {
     ]);
   });
 
+  it('flags no segment for a stale phrase whose first token is now punctuation and whose words are gone', async () => {
+    const original = makeVerseBook([{ sid: 'GEN 1:1', text: 'Alpha beta' }]);
+    const edited = makeVerseBook([{ sid: 'GEN 1:1', text: '"New' }]);
+    const repository = await repositoryOver(
+      stalePhrase('pl', [tokenRefOf(original, 'Alpha'), tokenRefOf(original, 'beta')]),
+    );
+
+    const outline = await readBookOutline(repository, edited, edited);
+
+    expect(outline.segments.map((segment) => segment.hasStaleGloss)).toStrictEqual([undefined]);
+  });
+
   it('flags each segment showing a stale free translation, an orphaned card included', async () => {
     const translations = ['GEN 1:0', 'GEN 1:5'].map(staleTranslation);
     const repository = await repositoryOver({

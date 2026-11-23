@@ -308,7 +308,7 @@ describe('describeChange', () => {
       ]);
     });
 
-    it('flags the book of a stale phrase link that the change put or removed', async () => {
+    it('flags the book of a stale phrase link that the change put', async () => {
       const link = makePhraseLink('pl', [ref('created'), ref('the')]);
       const changes: ChangeSet = {
         intent: 'x',
@@ -317,6 +317,24 @@ describe('describeChange', () => {
       const inverse: ChangeSet = {
         intent: 'x',
         phraseAnalysisLinks: { puts: [link], deletes: [] },
+      };
+
+      const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
+
+      expect(change.books).toStrictEqual([
+        expect.objectContaining({ bookId: 'GEN', staleGlosses: true }),
+      ]);
+    });
+
+    it('flags the book of a stale phrase link that the change removed', async () => {
+      const link = makePhraseLink('pl', [ref('created'), ref('the')]);
+      const changes: ChangeSet = {
+        intent: 'x',
+        phraseAnalysisLinks: { puts: [link], deletes: [] },
+      };
+      const inverse: ChangeSet = {
+        intent: 'x',
+        phraseAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
       };
 
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);

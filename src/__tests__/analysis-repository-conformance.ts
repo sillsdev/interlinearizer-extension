@@ -1095,6 +1095,32 @@ export function describeAnalysisRepositoryConformance(
 
             await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
           });
+
+          it('refuses an update keeping a link on its stored analysis, which the same changes delete, though the read link names another, applying nothing', async () => {
+            const repository = await overFullDraft();
+            const read = fixture('tokenAnalysisLinks', ID.tlGenBeginning);
+            await repository.apply({
+              intent: 'move',
+              tokenAnalysisLinks: updating({
+                before: read,
+                after: { ...read, analysisId: ID.taUnlinked },
+              }),
+            });
+            const moved = await readStored();
+
+            await expect(
+              repository.apply({
+                intent: 'approveAndDelete',
+                tokenAnalyses: deleting([fixture('tokenAnalyses', ID.taUnlinked)]),
+                tokenAnalysisLinks: updating({
+                  before: read,
+                  after: { ...read, status: 'approved' },
+                }),
+              }),
+            ).rejects.toThrow();
+
+            await expect(readStored()).resolves.toStrictEqual(moved);
+          });
         }
 
         it('keeps the drafts of different source projects apart', async () => {

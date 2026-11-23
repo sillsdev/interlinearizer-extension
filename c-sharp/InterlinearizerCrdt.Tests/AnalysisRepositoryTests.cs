@@ -771,6 +771,31 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyKeepsALinksUpdateWhoseReadAnalysisAnotherCommitMovedItOffAndDeleted()
+    {
+        await ApplyNext(FullAnalysis());
+        var read = TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(TlGenBeginning, TaUnlinked, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested))),
+        });
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaBeginning) });
+
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approve",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning"))),
+        });
+
+        var stored = (await Repository.FindLinksToAnalyses([TaUnlinked])).TokenAnalysisLinks.Single();
+        await Assert.That(stored.Id).IsEqualTo(TlGenBeginning);
+        await Assert.That(stored.Status).IsEqualTo(AssignmentStatus.Approved);
+    }
+
+    [Test]
     public async Task ApplyRefusesAPutUnderAnIdDeletedAsAnotherKindApplyingNothing()
     {
         await ApplyNext(FullAnalysis());

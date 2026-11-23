@@ -80,12 +80,35 @@ export async function reanchorStoredBook(
 }
 
 /**
+ * The record kinds whose changes can make the stored draft read differently from how its passes
+ * left it.
+ */
+const ANCHORED_KINDS = [
+  'tokenAnalysisLinks',
+  'phraseAnalysisLinks',
+  'segmentAnalysisLinks',
+  'segmentAnalyses',
+] as const;
+
+/**
  * Gives the {@link ReanchorBooks} for `repository`: the changes that re-anchor what an undo or redo
  * would restore there, without applying them. Skips each book that would hold neither links nor
- * boundary edits once the changes apply.
+ * boundary edits once the changes apply. Gives `undefined`, reading nothing, when the changes touch
+ * no link, segment analysis or boundary edit, because the stored draft already reads as its passes
+ * left it.
  */
 export function reanchorRestored(repository: AnalysisRepository): ReanchorBooks {
   return async (changes, books) => {
+    const touchesAnchors =
+      changes.scope !== undefined ||
+      ANCHORED_KINDS.some((kind) => {
+        const kindChanges = changes[kind];
+        return (
+          kindChanges !== undefined &&
+          kindChanges.creates.length + kindChanges.updates.length + kindChanges.deletes.length > 0
+        );
+      });
+    if (!touchesAnchors) return undefined;
     // A restored link may name a payload no stored link does, which only the step's changes reveal.
     const linkChanges = changes.segmentAnalysisLinks;
     const stored = await readBooks(

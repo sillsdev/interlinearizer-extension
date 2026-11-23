@@ -1,12 +1,11 @@
 /// <reference types="jest" />
 
-import { decideReseat, type ReseatInputs } from '../../hooks/useSkimReseat';
+import { decideReseat, SKIM_LEAD_PX, type ReseatInputs } from '../../hooks/useSkimReseat';
 import type { HeightTable } from '../../utils/segment-heights';
 
 /**
- * A book of 100 segments, each 1000px tall, so segment `i` starts at offset `i * 1000`. The skim
- * distances then read as whole segments: 8 ahead, 2 behind, a 3-segment slide, and a 1.5-segment
- * lead.
+ * A book of 100 segments, each 1000px tall, so segment `i` starts at offset `i * 1000` and the skim
+ * distances read as whole segments.
  */
 const TABLE: HeightTable = (() => {
   const heights = Array.from({ length: 100 }, () => 1000);
@@ -39,6 +38,7 @@ describe('decideReseat', () => {
   });
 
   it('rebuilds around the scroll position when the mounted run lies wholly above the viewport', () => {
+    // Segment 50, reaching 2000px behind to segment 48 and 8000px ahead to segment 58.
     expect(
       decideReseat({
         ...ON_SCREEN,
@@ -50,6 +50,7 @@ describe('decideReseat', () => {
   });
 
   it('rebuilds reaching further up the book when traveling up', () => {
+    // Segment 50, reaching 8000px behind to segment 42 and 2000px ahead to segment 52.
     expect(
       decideReseat({
         ...ON_SCREEN,
@@ -61,24 +62,29 @@ describe('decideReseat', () => {
     ).toStrictEqual({ start: 42, end: 53 });
   });
 
-  it('leaves the window when the table places the scroll position inside it', () => {
+  it('rebuilds a skim whose scroll position has left the window', () => {
     expect(
       decideReseat({
         ...ON_SCREEN,
-        bottomSentinelBottom: -1,
+        bottomSentinelBottom: ROOT.bottom + SKIM_LEAD_PX - 1,
+        isSkimming: true,
         scrollTop: 50_000,
-        range: { start: 45, end: 56 },
+        range: { start: 0, end: 10 },
       }),
-    ).toBeUndefined();
+    ).toStrictEqual({ start: 48, end: 59 });
+  });
+
+  it('leaves the window when the table places the scroll position inside it', () => {
+    expect(decideReseat({ ...ON_SCREEN, bottomSentinelBottom: -1 })).toBeUndefined();
   });
 
   it('slides a skim running out of runway ahead, keeping the segments both ranges share', () => {
+    // Both edges move 3000px, three segments, down the book.
     expect(
       decideReseat({
         ...ON_SCREEN,
-        bottomSentinelBottom: ROOT.bottom + 1499,
+        bottomSentinelBottom: ROOT.bottom + SKIM_LEAD_PX - 1,
         isSkimming: true,
-        scrollTop: 50_000,
         range: { start: 40, end: 60 },
       }),
     ).toStrictEqual({ start: 43, end: 63 });
@@ -88,20 +94,19 @@ describe('decideReseat', () => {
     expect(
       decideReseat({
         ...ON_SCREEN,
-        topSentinelTop: ROOT.top - 1499,
+        topSentinelTop: ROOT.top - SKIM_LEAD_PX + 1,
         isSkimming: true,
         direction: -1,
-        scrollTop: 50_000,
         range: { start: 40, end: 60 },
       }),
     ).toStrictEqual({ start: 37, end: 57 });
   });
 
-  it('leaves a skim with more than the lead distance of runway ahead', () => {
+  it('leaves a skim with the full lead distance of runway ahead', () => {
     expect(
       decideReseat({
         ...ON_SCREEN,
-        bottomSentinelBottom: ROOT.bottom + 1500,
+        bottomSentinelBottom: ROOT.bottom + SKIM_LEAD_PX,
         isSkimming: true,
         range: { start: 40, end: 60 },
       }),
@@ -112,7 +117,7 @@ describe('decideReseat', () => {
     expect(
       decideReseat({
         ...ON_SCREEN,
-        bottomSentinelBottom: ROOT.bottom + 1499,
+        bottomSentinelBottom: ROOT.bottom + SKIM_LEAD_PX - 1,
         isSkimming: true,
         scrollTop: 90_000,
         range: { start: 80, end: 100 },

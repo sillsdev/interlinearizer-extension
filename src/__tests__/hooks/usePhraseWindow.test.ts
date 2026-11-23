@@ -5,35 +5,7 @@ import usePhraseWindow, {
   HARD_WINDOW_CAP,
   INITIAL_WINDOW_HALF,
 } from '../../hooks/usePhraseWindow';
-
-/**
- * The intersection-observer Jest stub records instances on the global object and exposes a helper
- * to fire intersections. Declare the shapes here so the test reads them without type assertions.
- */
-declare global {
-  // eslint-disable-next-line no-var, vars-on-top
-  var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
-  // eslint-disable-next-line no-var, vars-on-top
-  var ioInstances: {
-    targets: Set<Element>;
-    callback: (entries: { target: Element; isIntersecting: boolean }[]) => void;
-  }[];
-}
-
-/**
- * Delivers both sentinels to the observer in a single callback invocation, as one happens to when
- * both lie inside the arming margin at once. The shared stub's per-element trigger lets a render
- * settle between the two, so it cannot reproduce a same-delivery pair.
- */
-function triggerBothSentinels(leading: Element, trailing: Element): void {
-  global.ioInstances.forEach((instance) => {
-    if (!instance.targets.has(leading) || !instance.targets.has(trailing)) return;
-    instance.callback([
-      { target: leading, isIntersecting: true },
-      { target: trailing, isIntersecting: true },
-    ]);
-  });
-}
+import { deliverIntersectingTogether } from '../test-helpers';
 
 /**
  * Renders {@link usePhraseWindow} against a real, attached viewport element so sentinel ref
@@ -612,11 +584,28 @@ describe('usePhraseWindow', () => {
     mountGroupEls(viewport, [100, 200, 300]);
 
     act(() => {
-      triggerBothSentinels(leading, trailing);
+      deliverIntersectingTogether(leading, trailing);
     });
 
     expect(result.current.range).toEqual({
       start: before.start - EXTEND_CHUNK,
+      end: before.end + EXTEND_CHUNK,
+    });
+  });
+
+  it('extends once when one observer delivery reports the same sentinel twice', () => {
+    const { result, viewport } = renderPhraseWindow(200, 100);
+    const before = result.current.range;
+    const { trailing } = mountSentinels(viewport, result.current);
+    stubRect(viewport, 0, 1000);
+    mountGroupEls(viewport, [100, 200, 300]);
+
+    act(() => {
+      deliverIntersectingTogether(trailing, trailing);
+    });
+
+    expect(result.current.range).toEqual({
+      start: before.start,
       end: before.end + EXTEND_CHUNK,
     });
   });

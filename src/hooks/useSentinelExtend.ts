@@ -25,9 +25,9 @@ export interface UseSentinelExtendArgs<E extends string> {
    *
    * An `IntersectionObserver` reports only intersection _transitions_. After an extend the sentinel
    * nodes are unchanged and may still sit inside the arming margin, where a stale observer stays
-   * silent however far the reader scrolls. A fresh observer re-delivers the initial state, which
-   * extends again until the sentinel leaves the margin. That loop ends because a delivery that
-   * cannot grow the window changes none of these keys.
+   * silent however far the reader scrolls. A fresh observer re-delivers the initial state, so the
+   * window extends again until the sentinel leaves the margin. That loop ends because a delivery
+   * that cannot grow the window changes none of these keys.
    */
   resubscribeKeys: readonly unknown[];
 }

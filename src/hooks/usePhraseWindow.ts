@@ -251,7 +251,8 @@ export default function usePhraseWindow({
   const [leadingSentinel, leadingSentinelRef] = useElementState();
   const [trailingSentinel, trailingSentinelRef] = useElementState();
 
-  // Groups arriving past an edge the window stopped at re-subscribe it too, since nothing else would.
+  // Groups arriving past an edge the window stopped at re-subscribe the observer too, since nothing
+  // else would.
   useSentinelExtend({
     root: viewportRef,
     sentinels: [

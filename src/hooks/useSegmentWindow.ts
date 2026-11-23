@@ -169,10 +169,9 @@ export interface UseSegmentWindowResult {
   /** Ref callback for the invisible sentinel placed below the last segment. */
   bottomSentinelRef: (el: HTMLElement | null) => void;
   /**
-   * Ref callback for the element wrapping the mounted segments (the fade wrapper). The hook's
-   * resize observer watches this element — not just the scroll container, whose own box is fixed by
-   * the panel layout — so late segment-height settling (arc padding) is actually reported and the
-   * above-viewport compensation and recenter re-snap can react to it.
+   * Ref callback for the element wrapping the mounted segments (the fade wrapper). Its box, unlike
+   * the scroll container's, changes when segment heights settle late (arc padding); the
+   * above-viewport compensation and the recenter re-snap react to that.
    */
   contentRef: (el: HTMLElement | null) => void;
   /** The element {@link contentRef} attached, or `undefined` before it mounts. */
@@ -373,6 +372,9 @@ export default function useSegmentWindow({
    * sentinel's arming margin. Before mutating, records a surviving segment element and its viewport
    * position so the layout effect can hold the visible content exactly still across the mutation.
    *
+   * Safe to call twice before a re-render: the second call extends the bounds the first produced,
+   * and both mutations share the anchor measured before either.
+   *
    * @param edge - Which end to grow: `'top'` prepends earlier segments, `'bottom'` appends later
    *   ones.
    */
@@ -404,11 +406,14 @@ export default function useSegmentWindow({
       // Anchor on the surviving edge element: the old first segment for a top extend (culls take
       // the bottom), the old last for a bottom extend (culls take the top).
       extendAnchor.record(edge === 'top' ? els[0] : els.at(-1));
-      if (edge === 'top') {
-        setRange({ start: Math.max(0, start - grow), end: end - cullable });
-      } else {
-        setRange({ start: start + cullable, end: Math.min(total, end + grow) });
-      }
+      const next =
+        edge === 'top'
+          ? { start: Math.max(0, start - grow), end: end - cullable }
+          : { start: start + cullable, end: Math.min(total, end + grow) };
+      // Published to the ref as well as to state, which only a render would refresh, so a second
+      // call before that render reads these bounds rather than the ones they replaced.
+      rangeRef.current = next;
+      setRange(next);
     },
     [scrollContainerRef, total, rangeRef, extendAnchor],
   );
@@ -630,7 +635,7 @@ export default function useSegmentWindow({
 
   /**
    * The element wrapping the mounted segments (the fade wrapper), whose border box changes when
-   * segment heights settle; see {@link useScrollCompensation}.
+   * segment heights settle.
    */
   const [contentEl, contentRef] = useElementState();
 

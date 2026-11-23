@@ -19,7 +19,12 @@ import {
   SKIM_SLIDE_PX,
 } from '../../hooks/useSkimReseat';
 import type { HeightTable } from '../../utils/segment-heights';
-import { EMPTY_GEN_BOOK, makeWordToken, outlineOf } from '../test-helpers';
+import {
+  deliverIntersectingTogether,
+  EMPTY_GEN_BOOK,
+  makeWordToken,
+  outlineOf,
+} from '../test-helpers';
 
 /** Height the test table gives every segment, so a jump target reads as a round offset. */
 const UNIFORM_SEGMENT_PX = 1000;
@@ -42,20 +47,6 @@ const FRAME_MS = 16;
 
 /** Id of the first segment of a window built centered on verse 50 of a single-chapter book. */
 const WINDOW_TOP_FOR_VERSE_50 = `GEN 1:${50 - INITIAL_WINDOW_HALF}`;
-
-/**
- * The intersection-observer Jest stub records instances on the global object and exposes a helper
- * to fire intersections. Declare the shapes here so the test reads them without type assertions.
- */
-declare global {
-  // eslint-disable-next-line no-var, vars-on-top
-  var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
-  // eslint-disable-next-line no-var, vars-on-top
-  var ioInstances: {
-    targets: Set<Element>;
-    callback: (entries: { target: Element; isIntersecting: boolean }[]) => void;
-  }[];
-}
 
 /**
  * Builds a single-token word segment for the given chapter/verse, in `book` (default `GEN`). Token
@@ -1337,6 +1328,37 @@ describe('useSegmentWindow', () => {
 
     expect(result.current.windowSegments[0].id).not.toBe(firstBefore);
     expect(container.scrollTop).toBe(350);
+  });
+
+  it('extends both edges when one observer delivery carries both sentinels', () => {
+    // Anchored mid-book, so both edges have room to grow.
+    const book = makeBook(100, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 50,
+    });
+    const before = result.current.range;
+    const { top, bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    // jsdom lays nothing out, so every segment rect is zero and none lies beyond the retention margin.
+    stubRect(container, 0, 600);
+    mountSegmentEls(
+      container,
+      result.current.windowSegments.map((s) => s.id),
+    );
+
+    act(() => {
+      deliverIntersectingTogether(top, bottom);
+    });
+
+    expect(result.current.range).toEqual({
+      start: before.start - EXTEND_CHUNK,
+      end: before.end + EXTEND_CHUNK,
+    });
   });
 
   it('holds the anchor segment still when a bottom extend culls content above the viewport', () => {

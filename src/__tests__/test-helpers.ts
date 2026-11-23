@@ -705,3 +705,30 @@ export const nullLexiconResolver: LexiconResolver = {
     throw new Error('No lexicon is connected to create an entry in.');
   },
 };
+
+/**
+ * The intersection-observer Jest stub records instances on the global object and exposes a helper
+ * to fire intersections. Declared here so tests read them without type assertions.
+ */
+declare global {
+  // eslint-disable-next-line no-var, vars-on-top
+  var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
+  // eslint-disable-next-line no-var, vars-on-top
+  var ioInstances: {
+    targets: Set<Element>;
+    callback: (entries: { target: Element; isIntersecting: boolean }[]) => void;
+  }[];
+}
+
+/**
+ * Reports every element in `els` intersecting, in one callback invocation of each observer that
+ * watches them all, as a real observer does when several targets cross in the same frame. A render
+ * cannot settle between the targets, unlike when each is triggered separately. Repeating an element
+ * reports it twice.
+ */
+export function deliverIntersectingTogether(...els: Element[]): void {
+  global.ioInstances.forEach((instance) => {
+    if (!els.every((el) => instance.targets.has(el))) return;
+    instance.callback(els.map((target) => ({ target, isIntersecting: true })));
+  });
+}

@@ -22,19 +22,13 @@ export interface UseScrollCompensationArgs {
 /**
  * Keeps the visible segments still while segments above the viewport change height, as arc padding
  * does when it settles across several frames after a segment mounts. Without it, that settling
- * would shove what the reader is looking at.
+ * would shove what the reader is looking at. While a recenter is in flight, resizes are relayed to
+ * `relayResize` instead, so the recentered verse stays pinned through every settling wave. The
+ * container itself moving or resizing (the strip mounting above it, a panel resize) never reads as
+ * a content shift.
  *
- * One `ResizeObserver` plays two roles. While a recenter is in flight it relays each resize to
- * `relayResize`, which pins the recentered verse through every settling wave. Otherwise it restores
- * an anchor segment to the offset it last held below the container's top edge. Offsets are
- * container-relative, so the container itself moving or resizing (the strip mounting above it, a
- * panel resize) never reads as a content shift.
- *
- * The anchor is re-measured on every scroll, so scrolling is never misread as a height change to
- * correct.
- *
- * @returns A stable callback that re-picks and re-measures the anchor, for a caller that moved the
- *   content itself (an extend correction) to call afterwards.
+ * @returns A stable callback that re-picks and re-measures the anchor. Call it after moving the
+ *   content directly, so the move is not read as a height change.
  */
 export default function useScrollCompensation({
   scrollContainerRef,
@@ -115,6 +109,7 @@ export default function useScrollCompensation({
         rebaseline();
         return;
       }
+      // Container-relative, so the container's own movement never reads as a content shift.
       const offset = anchor.el.getBoundingClientRect().top - root.getBoundingClientRect().top;
       // Content growing above the viewport pushes the anchor down; scrolling down by the same amount
       // holds the visible content fixed. Symmetric for shrink.
@@ -124,6 +119,7 @@ export default function useScrollCompensation({
     });
     observer.observe(root);
     observer.observe(contentEl);
+    // Re-measuring on scroll keeps scrolling from being misread as a height change to correct.
     // Re-picking the anchor walks the mounted rects, forcing a layout the scroll would otherwise
     // pay per event. A frame's worth of events collapses into one walk, which still lands before
     // the resize wave that reads the baseline.

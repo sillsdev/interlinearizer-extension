@@ -105,11 +105,10 @@ export interface ReseatInputs {
  * Decides whether a scroll has left the mounted segments, or a running skim is about to, and where
  * the window goes if so.
  *
- * Whether the scroll has left is read from the sentinels' geometry rather than the table, whose
- * predicted heights for the mounted run can differ from the laid-out ones; only the landing segment
- * comes from the table. A skim still inside the window that is only running out of runway ahead
- * slides, keeping every segment between the edges mounted. A scroll that has left the window
- * outright has nothing to preserve, so it rebuilds around the scroll position.
+ * Geometry rather than the table decides whether the window was left, because the table's predicted
+ * heights for the mounted run can differ from the laid-out ones. A skim still inside the window
+ * slides ahead, keeping the segments between its edges mounted; a scroll that has left the window
+ * outright rebuilds around the scroll position.
  *
  * @returns The range to mount, or `undefined` to leave the window as it is.
  */
@@ -171,13 +170,14 @@ export interface UseSkimReseatArgs {
 export interface UseSkimReseatResult {
   /**
    * Whether a skim is running: the scroll left the mounted run (as a thumb drag does) and has not
-   * settled. A ref because nothing renders from it; it only suspends the sentinel extends, which a
-   * skim re-seats ahead of instead.
+   * settled. Sentinel extends are not wanted while it holds, because a skim re-seats ahead of
+   * them.
    */
   isSkimmingRef: RefObject<boolean>;
   /**
-   * Bumped each time a skim ends, to re-subscribe the sentinel observer. A skim can settle with a
-   * sentinel already inside the arming margin, whose delivery the skim guard dropped.
+   * Changes each time a skim ends. A skim can settle with a sentinel already inside the arming
+   * margin, whose delivery was dropped during the skim, so watchers of the sentinels re-arm on this
+   * change.
    */
   skimEpoch: number;
 }
@@ -185,13 +185,11 @@ export interface UseSkimReseatResult {
 /**
  * Re-seats the segment window when the scroll position leaves the mounted segments entirely, as a
  * thumb drag or a click on the scrollbar track does, and keeps sliding it ahead of the drag while
- * the resulting skim runs. Coalesced to one re-seat per animation frame, since a drag delivers a
- * scroll event per frame and each would queue a further remount.
+ * the resulting skim runs.
  *
  * A skim ends on the pointer release for a drag, or after {@link SKIM_SETTLE_MS} without a scroll
- * otherwise. It leaves the mounted range as the drag left it, for the sentinel extends to cull a
- * chunk at a time, where collapsing it would unmount most of the window in one commit just as the
- * reader stops to read.
+ * otherwise. It leaves the mounted range as the drag left it, because collapsing it would unmount
+ * most of the window in one commit just as the reader stops to read.
  */
 export default function useSkimReseat({
   scrollContainerRef,
@@ -262,12 +260,13 @@ export default function useSkimReseat({
       const delta = scrollTop - lastScrollTop;
       if (delta * direction > 0) lastScrollTop = scrollTop;
       else if (Math.abs(delta) >= SKIM_REVERSE_PX) {
-        // Reaching here means the move ran against `direction`, so the turn is always a negation.
         direction = direction > 0 ? -1 : 1;
         lastScrollTop = scrollTop;
       }
       // A scroll mid-skim keeps the skim alive, whether or not it moves off the mounted run.
       if (isSkimming) armSkimEnd();
+      // One re-seat per frame: a drag delivers a scroll event per frame, and each would queue a
+      // further remount.
       if (rafId !== undefined) return;
       rafId = requestAnimationFrame(() => {
         rafId = undefined;

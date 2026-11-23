@@ -23,9 +23,8 @@ export interface ExtendAnchor {
 }
 
 /**
- * Holds a scroll window still across an extend. Measuring a surviving element's displacement
- * captures whatever the mutation did around it (height or width added, culled, or clamped at either
- * end), which no arithmetic on the range could.
+ * Holds a scroll window still across an extend, whatever height or width the mutation added,
+ * culled, or clamped at either end.
  *
  * The caller calls {@link ExtendAnchor.restore} from a layout effect on the range, so the correction
  * lands before the browser paints the mutated window.

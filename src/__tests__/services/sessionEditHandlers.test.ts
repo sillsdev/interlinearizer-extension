@@ -248,10 +248,13 @@ describe('sessionEditHandlers', () => {
     });
 
     await expect(change).rejects.toThrow('needs an analysis language');
-    expect(host.logger.error).toHaveBeenCalledWith(
+    expect(host.logger.error).toHaveBeenCalledTimes(1);
+    const [[message, logged]] = host.logger.error.mock.calls;
+    expect(message).toBe(
       `Interlinearizer: failed to changeAnalysisLanguages in session ${sessionId}`,
-      await change.catch((e: unknown) => e),
     );
+    // `toHaveBeenCalledWith` would accept any error with the same message.
+    expect(logged).toBe(await change.catch((e: unknown) => e));
   });
 
   it.each([

@@ -20,10 +20,10 @@ describe('logAndRethrow', () => {
     ).rejects.toBe(error);
 
     expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith(
-      'Interlinearizer: failed to count usages in session s1',
-      error,
-    );
+    const [[message, logged]] = logger.error.mock.calls;
+    expect(message).toBe('Interlinearizer: failed to count usages in session s1');
+    // `toHaveBeenCalledWith` would accept any error with the same message.
+    expect(logged).toBe(error);
   });
 
   it('logs and rejects with an error the run throws before it returns a promise', async () => {
@@ -37,6 +37,8 @@ describe('logAndRethrow', () => {
     ).rejects.toBe(error);
 
     expect(logger.error).toHaveBeenCalledTimes(1);
-    expect(logger.error).toHaveBeenCalledWith('Interlinearizer: failed to count', error);
+    const [[message, logged]] = logger.error.mock.calls;
+    expect(message).toBe('Interlinearizer: failed to count');
+    expect(logged).toBe(error);
   });
 });

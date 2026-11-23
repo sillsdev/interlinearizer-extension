@@ -1344,21 +1344,26 @@ describe('useSegmentWindow', () => {
       result.current.topSentinelRef,
       result.current.bottomSentinelRef,
     );
-    // jsdom lays nothing out, so every segment rect is zero and none lies beyond the retention margin.
+    // No segment lies beyond the retention margin, so neither extend culls. The top extend's prepend
+    // pushes the old first segment down 300px (100 -> 400); the shared anchor is that segment.
     stubRect(container, 0, 600);
-    mountSegmentEls(
+    const els = mountSegmentEls(
       container,
       result.current.windowSegments.map((s) => s.id),
     );
+    stubRect(els[0], 100);
+    container.scrollTop = 50;
 
     act(() => {
       deliverIntersectingTogether(top, bottom);
+      stubRect(els[0], 400);
     });
 
     expect(result.current.range).toEqual({
       start: before.start - EXTEND_CHUNK,
       end: before.end + EXTEND_CHUNK,
     });
+    expect(container.scrollTop).toBe(350);
   });
 
   it('holds the anchor segment still when a bottom extend culls content above the viewport', () => {

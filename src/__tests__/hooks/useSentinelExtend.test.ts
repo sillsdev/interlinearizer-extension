@@ -46,7 +46,7 @@ describe('useSentinelExtend', () => {
     expect(onReach).toHaveBeenNthCalledWith(2, 'trailing');
   });
 
-  it('ignores a sentinel reported leaving the margin', () => {
+  it('reports a sentinel entering the margin but not one leaving it', () => {
     const { root, leading } = mountRootAndSentinels();
     const onReach = jest.fn();
     renderHook(() =>
@@ -60,8 +60,11 @@ describe('useSentinelExtend', () => {
     );
 
     act(() => global.triggerIntersection(leading, false));
-
     expect(onReach).not.toHaveBeenCalled();
+
+    act(() => global.triggerIntersection(leading, true));
+    expect(onReach).toHaveBeenCalledTimes(1);
+    expect(onReach).toHaveBeenCalledWith('leading');
   });
 
   it('watches nothing while there is no callback', () => {

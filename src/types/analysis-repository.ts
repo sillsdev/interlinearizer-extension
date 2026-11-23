@@ -73,6 +73,13 @@ export type DraftState = {
   hasFreeTranslations: boolean;
   /** As {@link DraftExport.unreadableBooks}. */
   unreadableBooks: string[];
+  /**
+   * The `textVersion` that each book's analysis was last re-anchored to, by book code, as
+   * {@link ApplyOptions.anchoredTo} recorded it. A later {@link ApplyOptions.unanchored} drops a
+   * book. A book not listed may hold analysis anchored to any text. A repository that records no
+   * such versions lists none.
+   */
+  anchoredVersions: Record<string, string>;
 };
 
 /** Payloads of every kind, one list per kind. */
@@ -102,13 +109,25 @@ export type ChangeSet = {
   [Kind in keyof TextAnalysis]?: RecordChanges<TextAnalysis[Kind][number]>;
 };
 
-/** How an apply treats the draft's unsaved mark. */
+/** How an apply treats the draft's unsaved mark and its recorded anchor versions. */
 export type ApplyOptions = {
   /**
    * Leave the draft as saved or unsaved as it was, for bookkeeping such as a re-anchor pass rather
    * than an edit. Absent, the draft is marked unsaved.
    */
   keepDirty?: boolean;
+  /**
+   * Records that once the changes apply, the analysis of the book `bookCode` is anchored to the
+   * text whose `textVersion` is given, as a re-anchor pass leaves it. A repository that records no
+   * such versions ignores it.
+   */
+  anchoredTo?: { bookCode: string; textVersion: string };
+  /**
+   * Book codes whose recorded `textVersion` is dropped once the changes apply, so that no later
+   * session skips the book's next re-anchor pass. A repository that records no such versions
+   * ignores it.
+   */
+  unanchored?: readonly string[];
 };
 
 /** What applying a {@link ChangeSet} tells its caller. */

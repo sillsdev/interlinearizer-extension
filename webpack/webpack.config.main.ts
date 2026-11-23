@@ -4,7 +4,8 @@ import merge from 'webpack-merge';
 import CopyPlugin from 'copy-webpack-plugin';
 import configBase, { rootDir } from './webpack.config.base';
 import WebViewResolveWebpackPlugin from './web-view-resolve-webpack-plugin';
-import { LIBRARY_TYPE, outputFolder } from './webpack.util';
+import { EmitShippedModulesPlugin } from './emit-shipped-modules-plugin';
+import { LIBRARY_TYPE, noticesManifestFolder, outputFolder } from './webpack.util';
 
 /** Webpack configuration for building main */
 const configMain: webpack.Configuration = merge(configBase, {
@@ -74,6 +75,11 @@ const configMain: webpack.Configuration = merge(configBase, {
         // The C# host, once `npm run build:c-sharp` has published it
         { from: 'c-sharp/publish', to: './c-sharp/', noErrorOnMissing: true },
       ],
+    }),
+    // Lists the modules this build bundled, for third-party license notices
+    new EmitShippedModulesPlugin({
+      bundleName: 'extension-main',
+      outputDir: path.join(rootDir, noticesManifestFolder),
     }),
   ],
 });

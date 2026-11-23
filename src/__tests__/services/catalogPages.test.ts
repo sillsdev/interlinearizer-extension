@@ -4,8 +4,10 @@ import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../test-helpers';
 import {
+  CATALOG_INLINE_PLACES,
   countUsages,
   getCatalogPage,
+  getCatalogPlaces,
   getHomographRows,
   getRowsByIds,
   restoreUntagged,
@@ -29,14 +31,34 @@ function makeRequest(overrides: Partial<CatalogPageRequest> = {}): CatalogPageRe
   };
 }
 
-/** Builds an approved link from `tokenRef` to the analysis. */
-function link(analysisId: string, tokenRef: string): TokenAnalysisLink {
+/** Builds a link from `tokenRef` to the analysis, approved unless `status` says otherwise. */
+function link(
+  analysisId: string,
+  tokenRef: string,
+  status: TokenAnalysisLink['status'] = 'approved',
+): TokenAnalysisLink {
   return {
     id: `${tokenRef}:${analysisId}`,
     ...FIXTURE_STAMPS,
     analysisId,
-    status: 'approved',
+    status,
     token: { tokenRef, surfaceText: 'word' },
+  };
+}
+
+/**
+ * One analysis used at more places, and stale at more places, than a page carries. Its places run
+ * from verse 1 in document order.
+ */
+function muchUsed(): TextAnalysis {
+  const verses = Array.from({ length: CATALOG_INLINE_PLACES + 3 }, (_unused, index) => index + 1);
+  return {
+    ...emptyAnalysis(),
+    tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'word' }],
+    tokenAnalysisLinks: [
+      ...verses.map((verse) => link('ta-1', `GEN 1:${verse}:0`)),
+      ...verses.map((verse) => link('ta-1', `GEN 2:${verse}:0`, 'stale')),
+    ],
   };
 }
 
@@ -120,6 +142,30 @@ describe('getCatalogPage', () => {
     expect(page.rows.some((r) => r.isNotInText)).toBe(false);
   });
 
+  it("carries only a row's first usages, counting them all", () => {
+    const [row] = getCatalogPage(muchUsed(), scope, makeRequest(), formInText).rows;
+
+    expect(row.firstUsages.map((usage) => usage.tokenRef)).toEqual(
+      Array.from({ length: CATALOG_INLINE_PLACES }, (_unused, index) => `GEN 1:${index + 1}:0`),
+    );
+    expect(row.usageCount).toBe(CATALOG_INLINE_PLACES + 3);
+  });
+
+  it("carries only a row's first stale places, counting them all", () => {
+    const [row] = getCatalogPage(muchUsed(), scope, makeRequest(), formInText).rows;
+
+    expect(row.firstStaleLocations.map((place) => place.tokenRef)).toEqual(
+      Array.from({ length: CATALOG_INLINE_PLACES }, (_unused, index) => `GEN 2:${index + 1}:0`),
+    );
+    expect(row.staleCount).toBe(CATALOG_INLINE_PLACES + 3);
+  });
+
+  it("leaves out each row's search text, which only the query reads", () => {
+    const page = getCatalogPage(fiveWords(), scope, makeRequest(), formInText);
+
+    expect(page.rows.some((row) => 'searchText' in row)).toBe(false);
+  });
+
   it('counts every row the draft holds, whatever the query keeps', () => {
     const page = getCatalogPage(
       fiveWords(),
@@ -194,6 +240,25 @@ describe('getRowsByIds', () => {
     const rows = getRowsByIds(fiveWords(), scope, ['ta-gone', 'ta-a']);
 
     expect(rows.map((r) => r.analysisId)).toEqual(['ta-a']);
+  });
+});
+
+describe('getCatalogPlaces', () => {
+  it('lists every usage and every stale place of the analysis, in document order', () => {
+    const verses = Array.from({ length: CATALOG_INLINE_PLACES + 3 }, (_unused, index) => index + 1);
+
+    const places = getCatalogPlaces(muchUsed(), scope, 'ta-1');
+
+    expect(places?.usages.map((usage) => usage.tokenRef)).toEqual(
+      verses.map((verse) => `GEN 1:${verse}:0`),
+    );
+    expect(places?.staleLocations.map((place) => place.tokenRef)).toEqual(
+      verses.map((verse) => `GEN 2:${verse}:0`),
+    );
+  });
+
+  it('lists nothing for an id no analysis carries', () => {
+    expect(getCatalogPlaces(muchUsed(), scope, 'ta-gone')).toBeUndefined();
   });
 });
 

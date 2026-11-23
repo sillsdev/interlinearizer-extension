@@ -1,6 +1,6 @@
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { useAnalysisReadOnly } from './AnalysisStore';
 import { usePublishedFocus } from './InterlinearNavContext';
 import type { CatalogUsage } from '../utils/analysis-query';
@@ -32,10 +32,14 @@ function reapplyTargetOf(
 
 /** Props for {@link CatalogStaleLocations}. */
 type CatalogStaleLocationsProps = Readonly<{
-  /** The places the analysis went stale at, in document order. */
+  /** The places listed, in document order. */
   locations: readonly CatalogUsage[];
-  /** How many places are listed before the rest go behind an expander. */
-  inlineLimit: number;
+  /** How many more places the analysis went stale at than are listed. */
+  hiddenCount: number;
+  /** Asks for every place to be listed. */
+  onShowAll: () => void;
+  /** A notice about the places still being fetched, shown below the list. */
+  children?: ReactNode;
   /** Writes a place the way the row's usages are written. */
   labelFor: (location: CatalogUsage) => string;
   /** Moves the interlinear view to the verse a place sits in. */
@@ -59,7 +63,9 @@ type CatalogStaleLocationsProps = Readonly<{
  */
 export default function CatalogStaleLocations({
   locations,
-  inlineLimit,
+  hiddenCount,
+  onShowAll,
+  children,
   labelFor,
   onSelect,
   onDiscard,
@@ -71,17 +77,13 @@ export default function CatalogStaleLocations({
   // Subscribed here rather than in the row, so a focus move re-renders only the stale lists.
   const target = reapplyTargetOf(usePublishedFocus(), liveSurfaceText);
 
-  const [showsAll, setShowsAll] = useState(false);
-  const visible = showsAll ? locations : locations.slice(0, inlineLimit);
-  const hiddenCount = locations.length - visible.length;
-
   return (
     <div className="tw:flex tw:flex-col tw:gap-1" data-testid="catalog-stale-locations">
       <p className="tw:text-xs tw:gloss-stale">
         {localizedStrings['%interlinearizer_analysisCatalog_staleHeading%']}
       </p>
       <ul className="tw:flex tw:flex-col tw:gap-1">
-        {visible.map((location) => (
+        {locations.map((location) => (
           <li
             className="tw:flex tw:flex-wrap tw:items-center tw:gap-1"
             data-testid="catalog-stale-location"
@@ -138,7 +140,7 @@ export default function CatalogStaleLocations({
         <Button
           className="tw:self-start"
           data-testid="catalog-stale-locations-show-all"
-          onClick={() => setShowsAll(true)}
+          onClick={onShowAll}
           size="sm"
           variant="link"
         >
@@ -148,6 +150,7 @@ export default function CatalogStaleLocations({
           )}
         </Button>
       )}
+      {children}
     </div>
   );
 }

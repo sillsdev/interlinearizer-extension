@@ -1138,6 +1138,21 @@ export const commandDocs: Record<ExtensionCommand, MethodDocumentationWithoutNam
     }),
     result: catalogRowsResult,
   },
+  'interlinearizer.getCatalogPlaces': {
+    summary:
+      "Serve every place an analysis in a session's draft is applied at or went stale at, for a catalog row",
+    params: sessionArgs(currentBookParam, {
+      name: 'analysisId',
+      required: true,
+      summary: 'ID of the token analysis',
+      schema: { type: 'string' },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified CatalogPlaces; "null" when no analysis carries the id',
+      schema: { type: 'string' },
+    },
+  },
   'interlinearizer.getHomographRows': {
     summary:
       "Serve the catalog rows in a session's draft sharing an analysis's normalized surface form, most used first",

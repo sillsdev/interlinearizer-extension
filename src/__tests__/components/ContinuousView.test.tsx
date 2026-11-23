@@ -2322,15 +2322,23 @@ describe('ContinuousView phrase grouping', () => {
 });
 
 describe('ContinuousView segment pages', () => {
-  /** Pages of `book` loaded across `[start, end)`, which `loadMore` widens. */
+  /**
+   * Pages of `book` loaded across `[start, end)`, which `loadMore` widens. `fail` marks the
+   * segments in the range it is given as failed, where their pages are not loaded.
+   */
   function pagesLoading(book: Book, start: number, end: number) {
     let loaded = { start, end };
+    let failed = { start: 0, end: 0 };
     let version = 0;
     const listeners = new Set<() => void>();
     const pages: SegmentPages = {
       ...segmentPagesOf(book),
       segmentAt: (index) =>
         index >= loaded.start && index < loaded.end ? book.segments[index] : undefined,
+      failureAt: (index) =>
+        index >= failed.start && index < failed.end && (index < loaded.start || index >= loaded.end)
+          ? { isRetrying: false }
+          : undefined,
       subscribe: (onChange) => {
         listeners.add(onChange);
         return () => listeners.delete(onChange);
@@ -2343,7 +2351,13 @@ describe('ContinuousView segment pages', () => {
         version += 1;
         listeners.forEach((listener) => listener());
       });
-    return { pages, loadMore };
+    const fail = (failStart: number, failEnd: number) =>
+      act(() => {
+        failed = { start: failStart, end: failEnd };
+        version += 1;
+        listeners.forEach((listener) => listener());
+      });
+    return { pages, loadMore, fail };
   }
 
   it('reads no segment of the book beyond those around what it shows', () => {
@@ -2394,6 +2408,90 @@ describe('ContinuousView segment pages', () => {
 
       expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-0');
       expect(screen.queryByText('word250')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stays faded out after a jump while a page that does not hold its focus fails', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(300);
+      const { pages, loadMore, fail } = pagesLoading(book, 0, 300);
+      const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS / 2);
+      });
+      // The pages go, as they do when a boundary edit brings a fresh outline mid-fade.
+      loadMore(5, 100);
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      fail(0, 5);
+
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-0');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('fades back in when the page holding the focus of a jump is let go and fails to load again', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(300);
+      const { pages, loadMore, fail } = pagesLoading(book, 0, 300);
+      const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS / 2);
+      });
+      // The pages go, as they do when a boundary edit brings a fresh outline mid-fade.
+      loadMore(0, 100);
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      fail(0, 300);
+
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('fades back in when the page holding the focus of a jump leaves the token map and fails', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(300);
+      const { pages, loadMore, fail } = pagesLoading(book, 0, 300);
+      const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS / 2);
+      });
+      loadMore(0, 100);
+      strip.update({
+        tokenSegmentMap: buildLookups({ ...book, segments: book.segments.slice(0, 100) })
+          .tokenSegmentMap,
+      });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      fail(0, 300);
+
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100');
     } finally {
       jest.useRealTimers();
     }

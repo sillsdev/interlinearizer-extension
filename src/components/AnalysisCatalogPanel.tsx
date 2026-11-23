@@ -604,7 +604,7 @@ export default function AnalysisCatalogPanel({
 
   /** The row for `analysisId`, from those the host has sent, or `undefined` when none has. */
   const rowOf = useCallback(
-    (analysisId: string): CatalogRow | undefined =>
+    (analysisId: string): Pick<CatalogRow, 'morphemes' | 'surfaceText'> | undefined =>
       trackedRows?.get(analysisId) ?? sentRows.get(analysisId),
     [trackedRows, sentRows],
   );
@@ -1311,6 +1311,7 @@ export default function AnalysisCatalogPanel({
                     onStaleSelect={handleStaleSelect}
                     onUsageSelect={handleUsageSelect}
                     row={row}
+                    currentBook={currentBook}
                     revealRequest={
                       row.analysisId === rowToReveal?.analysisId ? rowToReveal : undefined
                     }

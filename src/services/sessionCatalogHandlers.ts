@@ -4,6 +4,7 @@ import type { AnalysisSessions, Session } from './analysisSessions';
 import type * as bookService from './bookService';
 import {
   getCatalogPage,
+  getCatalogPlaces as catalogPlacesOf,
   getHomographRows as homographRowsOf,
   getRowsByIds,
   restoreUntagged,
@@ -41,7 +42,7 @@ export type SessionCatalogHost = Readonly<{
 type ArgsOf<C extends keyof CommandHandlers> = Parameters<CommandHandlers[C]>[0];
 
 /** A row as JSON carries it, its books listed. */
-function wireRow<T extends CatalogRow>(row: T) {
+function wireRow<T extends Pick<CatalogRow, 'books'>>(row: T) {
   return { ...row, books: [...row.books] };
 }
 
@@ -185,6 +186,21 @@ export function sessionCatalogHandlers({
     });
   }
 
+  async function getCatalogPlaces({
+    sessionId,
+    currentBook,
+    analysisId,
+  }: ArgsOf<'interlinearizer.getCatalogPlaces'>): Promise<string> {
+    return readSession(sessionId, 'serve catalog places', async (session) => {
+      const places = catalogPlacesOf(
+        await analysesWithLinks(session.repository, [analysisId]),
+        await scopeOf(session, currentBook),
+        analysisId,
+      );
+      return places ? JSON.stringify(places) : 'null';
+    });
+  }
+
   async function getHomographRows({
     sessionId,
     currentBook,
@@ -279,6 +295,7 @@ export function sessionCatalogHandlers({
     'interlinearizer.getSelectionSummary': getSelectionSummary,
     'interlinearizer.countUsages': countUsages,
     'interlinearizer.getCatalogRowsByIds': getCatalogRowsByIds,
+    'interlinearizer.getCatalogPlaces': getCatalogPlaces,
     'interlinearizer.getHomographRows': getHomographRows,
   } satisfies Partial<CommandHandlers>;
 }

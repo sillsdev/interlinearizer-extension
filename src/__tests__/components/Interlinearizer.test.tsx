@@ -3,6 +3,7 @@
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
@@ -21,7 +22,7 @@ import {
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF } from '../../hooks/useSegmentWindow';
-import type { SegmentPages } from '../../types/segment-pages';
+import type { PageFailure, SegmentPages } from '../../types/segment-pages';
 import type { StaleFreeTranslation } from '../../utils/stale-free-translations';
 import {
   defaultScrRef,
@@ -295,6 +296,9 @@ function makeLargeBook(count: number): Book {
   }
   return { ...EMPTY_GEN_BOOK, segments };
 }
+
+/** How a page failed, for segments that a test's pages report as failed. */
+const FAILED: PageFailure = { isRetrying: false };
 
 /** Book with two segments in GEN 1. */
 const GEN_1_MULTI_BOOK: Book = {
@@ -2291,6 +2295,112 @@ describe('segment pages', () => {
     expect(placeholder).toHaveAttribute('data-segment-id', 'GEN 1:2');
     expect(placeholder).toHaveAttribute('aria-busy', 'true');
     expect(placeholder.style.height).not.toBe('');
+  });
+
+  it('names the verses that it mounts which failed to load', () => {
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_pageLoad_failed%': 'Failed: {places}' });
+    const book = makeLargeBook(6);
+    renderInterlinearizer({
+      book,
+      pages: { ...partlyLoaded(book, 2), failureAt: (index) => (index >= 2 ? FAILED : undefined) },
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed: Genesis 1:3–6');
+  });
+
+  it('names the verses being asked for again apart from those given up', () => {
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_pageLoad_failed%': 'Failed: {places}',
+      '%interlinearizer_pageLoad_retrying%': 'Retrying: {places}',
+    });
+    const book = makeLargeBook(6);
+    const retrying: PageFailure = { isRetrying: true };
+    renderInterlinearizer({
+      book,
+      pages: {
+        ...partlyLoaded(book, 2),
+        failureAt: (index) => {
+          if (index < 2) return undefined;
+          return index < 4 ? retrying : FAILED;
+        },
+      },
+    });
+
+    const [first, second] = screen.getAllByRole('alert');
+    expect(first).toHaveTextContent('Failed: Genesis 1:5–6');
+    expect(second).toHaveTextContent('Retrying: Genesis 1:3–4');
+  });
+
+  it('names in one banner the verses given up that do not adjoin', () => {
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_pageLoad_failed%': 'Failed: {places}' });
+    const book = makeLargeBook(6);
+    renderInterlinearizer({
+      book,
+      pages: {
+        ...partlyLoaded(book, 2),
+        failureAt: (index) => (index === 2 || index >= 4 ? FAILED : undefined),
+      },
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed: Genesis 1:3, 1:5–6');
+  });
+
+  it('says nothing of a failed segment beyond those it mounts', () => {
+    const book = makeLargeBook(300);
+    const lastIndex = book.segments.length - 1;
+    renderInterlinearizer({
+      book,
+      pages: {
+        ...segmentPagesOf(book),
+        segmentAt: (index) => (index === lastIndex ? undefined : book.segments[index]),
+        failureAt: (index) => (index === lastIndex ? FAILED : undefined),
+      },
+    });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('stops marking the place of a segment whose page failed to load as busy', () => {
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      pages: {
+        ...partlyLoaded(GEN_1_MULTI_BOOK, 1),
+        failureAt: (index) => (index >= 1 ? FAILED : undefined),
+      },
+    });
+
+    expect(screen.getByTestId('segment-placeholder')).toHaveAttribute('aria-busy', 'false');
+  });
+
+  it('marks the place of a segment whose page is being asked for again as busy', () => {
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      pages: {
+        ...partlyLoaded(GEN_1_MULTI_BOOK, 1),
+        failureAt: (index) => (index >= 1 ? { ...FAILED, isRetrying: true } : undefined),
+      },
+    });
+
+    expect(screen.getByTestId('segment-placeholder')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it("says nothing has failed while a segment's page loads", () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, pages: partlyLoaded(GEN_1_MULTI_BOOK, 1) });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('asks the pages to retry what failed when the reader asks to try again', async () => {
+    const user = userEvent.setup();
+    const pages = {
+      ...partlyLoaded(GEN_1_MULTI_BOOK, 1),
+      failureAt: (index: number) => (index >= 1 ? FAILED : undefined),
+    };
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, pages });
+
+    await user.click(screen.getByRole('button', { name: '%interlinearizer_pageLoad_retry%' }));
+
+    expect(pages.retryFailed).toHaveBeenCalledTimes(1);
   });
 
   it('marks the place of an active segment whose page has not loaded', () => {

@@ -243,6 +243,7 @@ export async function fakeHost(
       case 'interlinearizer.getSelectionSummary':
       case 'interlinearizer.countUsages':
       case 'interlinearizer.getCatalogRowsByIds':
+      case 'interlinearizer.getCatalogPlaces':
       case 'interlinearizer.getHomographRows':
       case 'interlinearizer.previewDeletion': {
         const handler: (args: unknown) => Promise<string | number> = Reflect.get(

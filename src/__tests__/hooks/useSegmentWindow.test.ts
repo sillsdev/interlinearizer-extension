@@ -1951,6 +1951,22 @@ describe('useSegmentWindow', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
   });
 
+  it('snaps the segment it centered on to the top when no segment is marked active', () => {
+    const book = makeBook(60, 0);
+    const { container, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    const [centered] = mountSegmentEls(container, [book.segments[49].id]);
+    centered.scrollIntoView = jest.fn();
+
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+    expect(centered.scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+  });
+
   it('snaps the cards ahead of the first segment to the top with it', () => {
     const book = makeBook(60, 0);
     const { container, rerender } = renderSegmentWindow(book, {

@@ -60,6 +60,8 @@ function segmentPagesOf(client: PageClient, outline: BookOutline, version: numbe
     heldRuns: () => client.heldRuns(),
     load: (start, end, caller) => client.load(start, end, caller),
     release: (caller) => client.release(caller),
+    failureAt: (index) => client.failureAt(index),
+    retryFailed: () => client.retryFailed(),
     subscribe: (onChange) => client.subscribe(onChange),
     loadedVersion: () => client.loadedVersion(),
   };

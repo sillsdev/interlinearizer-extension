@@ -4,6 +4,7 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useMemo } from 'react';
 import {
+  useCatalogPlaces,
   useCatalogRowsByIds,
   useCatalogView,
   useDeletionPreview,
@@ -306,6 +307,87 @@ describe('useDeletionPreview', () => {
     await settle();
 
     expect(timesSent('interlinearizer.previewDeletion')).toBe(2);
+  });
+});
+
+describe('useCatalogPlaces', () => {
+  it('asks nothing without an analysis', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPlaces(undefined, 'GEN'), { wrapper });
+    await settle();
+
+    expect(result.current).toBeUndefined();
+    expect(timesSent('interlinearizer.getCatalogPlaces')).toBe(0);
+  });
+
+  it('is loading until the host answers', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPlaces('ta-beginning', 'GEN'), { wrapper });
+
+    expect(result.current).toStrictEqual({ status: 'loading' });
+    await settle();
+  });
+
+  it('lists every place of the analysis', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPlaces('ta-beginning', 'GEN'), { wrapper });
+
+    await waitFor(() => expect(result.current?.status).toBe('ready'));
+    const { current } = result;
+    expect(current?.status === 'ready' && current.places).toStrictEqual({
+      usages: [expect.objectContaining({ book: 'GEN', chapter: 1, verse: 1 })],
+      staleLocations: [],
+    });
+  });
+
+  it('reports an analysis no longer stored as missing', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPlaces('ta-gone', 'GEN'), { wrapper });
+
+    await waitFor(() => expect(result.current).toStrictEqual({ status: 'missing' }));
+  });
+
+  it('reports places the host could not give', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getCatalogPlaces');
+
+    const { result } = renderHook(() => useCatalogPlaces('ta-beginning', 'GEN'), { wrapper });
+
+    await waitFor(() => expect(result.current?.status).toBe('failed'));
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not fetch catalog places',
+      expect.any(Error),
+    );
+  });
+
+  it('shows retried places as loading until the host answers', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getCatalogPlaces');
+    const { result } = renderHook(() => useCatalogPlaces('ta-beginning', 'GEN'), { wrapper });
+    await waitFor(() => expect(result.current?.status).toBe('failed'));
+
+    const { current } = result;
+    act(() => {
+      if (current?.status === 'failed') current.retry();
+    });
+
+    expect(result.current?.status).toBe('loading');
+    await waitFor(() => expect(result.current?.status).toBe('failed'));
+  });
+
+  it('fetches again when a change to the session names the catalog', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useCatalogPlaces('ta-beginning', 'GEN'), { wrapper });
+    await settle();
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogPlaces'), ['getCatalogRows']));
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogPlaces')).toBe(2);
   });
 });
 

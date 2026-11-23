@@ -28,9 +28,9 @@ The pass runs on the host, for an editable project only:
 - for each book as the session's whole-text read reaches it, and for each linked book the text lacks once the read finishes;
 - for the books that a boundary edit, an undo, a redo, or a discard touches, in the same step.
 
-An outline, a text change, or the read reaching a book skips it when the session last re-anchored it to the same text. The pass for a linked book that the text lacks runs unless text for that book arrives after the read finishes.
+An outline, a text change, or the read reaching a book skips it when the session last re-anchored it to the same text. Until the session first re-anchors a book, these passes also skip it when the draft records it as anchored to the same text. The pass for a linked book that the text lacks runs unless text for that book arrives after the read finishes.
 
-A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
+A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book never dirties the draft. It still writes storage, to record the text the book is anchored to, so that a later session can skip it.
 
 Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). A snapshot also records `formCount`, how many tokens of its form the verse held. An edit records the count from the text the host holds for the book. Snapshots written without that text, such as those imported from Paratext 9, carry none. Approved, candidate, and stale links are the evidence the alignment weighs; rejected and suggested links align afterward, among themselves, against the tokens those leave unclaimed, so a verdict never decides which occurrence an approval names. For each verse independently:
 

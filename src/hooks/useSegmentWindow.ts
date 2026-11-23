@@ -483,6 +483,13 @@ export default function useSegmentWindow({
   /** Segment the latest recenter was asked to frame, `undefined` for one on the active verse. */
   const recenterTargetIdRef = useRef<string | undefined>(undefined);
 
+  /**
+   * Segment the latest recenter built its window around, framed when no segment is marked active. A
+   * segment whose page failed to load is never marked active, because the focus cannot move into
+   * it.
+   */
+  const recenterCenterIdRef = useRef<string | undefined>(undefined);
+
   /** Latest range, mirrored so the observer callbacks read fresh bounds without re-subscribing. */
   const rangeRef = useLatestRef(range);
 
@@ -586,12 +593,15 @@ export default function useSegmentWindow({
     /* v8 ignore next -- container is always mounted while the window renders */
     if (!container) return;
     const targetId = recenterTargetIdRef.current;
+    const segmentElement = (id: string | undefined) =>
+      Array.from(container.querySelectorAll('[data-segment-id]')).find(
+        (el) => el.getAttribute('data-segment-id') === id,
+      );
     const target =
       targetId === undefined
-        ? container.querySelector('[aria-current="true"]')
-        : Array.from(container.querySelectorAll('[data-segment-id]')).find(
-            (el) => el.getAttribute('data-segment-id') === targetId,
-          );
+        ? (container.querySelector('[aria-current="true"]') ??
+          segmentElement(recenterCenterIdRef.current))
+        : segmentElement(targetId);
     /* v8 ignore next -- the recentered target is always mounted, so its element exists */
     if (!target) return;
     // Cards the list renders ahead of the book's first segment frame with it.
@@ -686,6 +696,7 @@ export default function useSegmentWindow({
                 focusedTokenRefRef.current,
                 anchorIndexRef.current,
               );
+        recenterCenterIdRef.current = segmentsRef.current[centerIndex]?.id;
         setRange(buildCenteredRange(centerIndex, totalRef.current));
         beginRecenterSettle();
         setDisplayScrRef(scrRefRef.current);

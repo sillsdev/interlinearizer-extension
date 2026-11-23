@@ -399,6 +399,40 @@ function mergePromoteFor(analysisId: string): HTMLElement {
   return within(mergeCandidateFor(analysisId)).getByTestId('catalog-merge-promote');
 }
 
+/** How many times the panel has asked the host for a row's places. */
+function timesPlacesSent(): number {
+  return jest
+    .mocked(papi.commands.sendCommand)
+    .mock.calls.filter(([command]) => command === 'interlinearizer.getCatalogPlaces').length;
+}
+
+/** Has the host fail the next fetch of a row's places. */
+function failPlacesOnce(): void {
+  const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+  let failNext = true;
+  jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+    if (call[0] === 'interlinearizer.getCatalogPlaces' && failNext) {
+      failNext = false;
+      throw new Error('offline');
+    }
+    return serve?.(...call);
+  });
+}
+
+/** Has the host hold back a row's places until the returned call releases them. */
+function holdPlaces(): () => void {
+  const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+    if (call[0] === 'interlinearizer.getCatalogPlaces') await held;
+    return serve?.(...call);
+  });
+  return release;
+}
+
 /** The analysis ids of each gloss clear that the panel sent, in order. */
 function clearedGlossIds(): unknown[] {
   return jest
@@ -1988,6 +2022,138 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(toggle);
 
         expect(toggle).toHaveFocus();
+      });
+
+      it('fetches the rest only once they are asked for', async () => {
+        await renderPanel({ analysis: MANY_USAGES });
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        expect(timesPlacesSent()).toBe(0);
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+
+        expect(timesPlacesSent()).toBe(1);
+      });
+
+      it('says the rest are on their way while they are fetched', async () => {
+        await renderPanel({ analysis: MANY_USAGES });
+        const release = holdPlaces();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+
+        expect(within(rowFor('ta-1')).getByTestId('catalog-places-loading')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_placesLoading%',
+        );
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-usage')).toHaveLength(12);
+        release();
+        await settle();
+      });
+
+      it('drops the loading notice once the rest arrive', async () => {
+        await renderPanel({ analysis: MANY_USAGES });
+        const release = holdPlaces();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+
+        release();
+        await settle();
+
+        expect(
+          within(rowFor('ta-1')).queryByTestId('catalog-places-loading'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('says when the rest could not be fetched', async () => {
+        await renderPanel({ analysis: MANY_USAGES });
+        failPlacesOnce();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+        await settle();
+
+        expect(within(rowFor('ta-1')).getByTestId('catalog-places-failed')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_placesLoadFailed%',
+        );
+      });
+
+      it('lists the rest once a failed fetch of them is tried again', async () => {
+        await renderPanel({ analysis: MANY_USAGES });
+        failPlacesOnce();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+        await settle();
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-places-retry'));
+        await settle();
+
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-usage')).toHaveLength(20);
+      });
+    });
+
+    describe('with more stale places than fit inline', () => {
+      /** One analysis stale at more places than the row lists inline. */
+      const MANY_STALE: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        tokenAnalysisLinks: Array.from({ length: 20 }, (_unused, index) =>
+          link('ta-1', `GEN 1:${index + 1}:0`, 'stale'),
+        ),
+      };
+
+      it('caps the inline list', async () => {
+        await renderPanel({ analysis: MANY_STALE });
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-stale-location')).toHaveLength(12);
+      });
+
+      it('reveals the rest from the expander', async () => {
+        await renderPanel({ analysis: MANY_STALE });
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+        await userEvent.click(
+          within(rowFor('ta-1')).getByTestId('catalog-stale-locations-show-all'),
+        );
+        await settle();
+
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-stale-location')).toHaveLength(20);
+        expect(
+          within(rowFor('ta-1')).queryByTestId('catalog-stale-locations-show-all'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('says below the stale list that the rest are on their way', async () => {
+        await renderPanel({ analysis: MANY_STALE });
+        const release = holdPlaces();
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+        await userEvent.click(
+          within(rowFor('ta-1')).getByTestId('catalog-stale-locations-show-all'),
+        );
+
+        expect(
+          within(within(rowFor('ta-1')).getByTestId('catalog-stale-locations')).getByTestId(
+            'catalog-places-loading',
+          ),
+        ).toBeInTheDocument();
+        release();
+        await settle();
+      });
+
+      it('returns to the inline cap once the row is collapsed', async () => {
+        await renderPanel({ analysis: MANY_STALE });
+        const toggle = within(rowFor('ta-1')).getByTestId('catalog-row-toggle');
+        await userEvent.click(toggle);
+        await userEvent.click(
+          within(rowFor('ta-1')).getByTestId('catalog-stale-locations-show-all'),
+        );
+        await settle();
+
+        await userEvent.click(toggle);
+        await userEvent.click(toggle);
+
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-stale-location')).toHaveLength(12);
       });
     });
   });

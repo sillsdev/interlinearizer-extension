@@ -420,19 +420,19 @@ export function useAnalysisRowDispatch(): {
         throw e;
       }
     };
-    /** Where the edit that `reply` answers left its record; in place when no reply came. */
-    const outcomeOf = (reply: CatalogEditReply | undefined): AnalysisEditOutcome =>
-      reply?.outcome ?? EDITED;
+    /** Sends an edit, resolving to where it left its record; in place when no reply came. */
+    const row = async (
+      intent: string,
+      call: (args: SessionEditArgs) => Promise<string | undefined>,
+    ): Promise<AnalysisEditOutcome> => (await send(intent, call))?.outcome ?? EDITED;
     return {
-      writeGloss: async (analysisId, value) =>
-        outcomeOf(
-          await send('writeAnalysisGloss', (args) =>
-            papi.commands.sendCommand('interlinearizer.writeAnalysisGloss', {
-              ...args,
-              analysisId,
-              value,
-            }),
-          ),
+      writeGloss: (analysisId, value) =>
+        row('writeAnalysisGloss', (args) =>
+          papi.commands.sendCommand('interlinearizer.writeAnalysisGloss', {
+            ...args,
+            analysisId,
+            value,
+          }),
         ),
       clearGlosses: async (analysisIds) => {
         const reply = await send('clearAnalysisGlosses', (args) =>
@@ -443,91 +443,75 @@ export function useAnalysisRowDispatch(): {
         );
         return reply?.emptiedAnalysisIds ?? [];
       },
-      writeMorphemes: async (analysisId, forms, writingSystem) =>
-        outcomeOf(
-          await send('writeAnalysisMorphemes', (args) =>
-            papi.commands.sendCommand('interlinearizer.writeAnalysisMorphemes', {
-              ...args,
-              analysisId,
-              forms: [...forms],
-              writingSystem,
-            }),
-          ),
+      writeMorphemes: (analysisId, forms, writingSystem) =>
+        row('writeAnalysisMorphemes', (args) =>
+          papi.commands.sendCommand('interlinearizer.writeAnalysisMorphemes', {
+            ...args,
+            analysisId,
+            forms: [...forms],
+            writingSystem,
+          }),
         ),
-      writeMorphemeGloss: async (analysisId, morphemeId, value) =>
-        outcomeOf(
-          await send('writeAnalysisMorphemeGloss', (args) =>
-            papi.commands.sendCommand('interlinearizer.writeAnalysisMorphemeGloss', {
-              ...args,
-              analysisId,
-              morphemeId,
-              value,
-            }),
-          ),
+      writeMorphemeGloss: (analysisId, morphemeId, value) =>
+        row('writeAnalysisMorphemeGloss', (args) =>
+          papi.commands.sendCommand('interlinearizer.writeAnalysisMorphemeGloss', {
+            ...args,
+            analysisId,
+            morphemeId,
+            value,
+          }),
         ),
-      linkSense: async (analysisId, senseRef) =>
-        outcomeOf(
-          await send('linkAnalysisSense', (args) =>
-            papi.commands.sendCommand('interlinearizer.linkAnalysisSense', {
-              ...args,
-              analysisId,
-              senseRef,
-            }),
-          ),
+      linkSense: (analysisId, senseRef) =>
+        row('linkAnalysisSense', (args) =>
+          papi.commands.sendCommand('interlinearizer.linkAnalysisSense', {
+            ...args,
+            analysisId,
+            senseRef,
+          }),
         ),
-      unlinkSense: async (analysisId, keepGloss) =>
-        outcomeOf(
-          await send('unlinkAnalysisSense', (args) =>
-            papi.commands.sendCommand('interlinearizer.unlinkAnalysisSense', {
-              ...args,
-              analysisId,
-              keepGloss,
-            }),
-          ),
+      unlinkSense: (analysisId, keepGloss) =>
+        row('unlinkAnalysisSense', (args) =>
+          papi.commands.sendCommand('interlinearizer.unlinkAnalysisSense', {
+            ...args,
+            analysisId,
+            keepGloss,
+          }),
         ),
-      linkMorphemeSense: async (analysisId, morphemeId, entryRef, senseRef) =>
-        outcomeOf(
-          await send('linkAnalysisMorphemeSense', (args) =>
-            papi.commands.sendCommand('interlinearizer.linkAnalysisMorphemeSense', {
-              ...args,
-              analysisId,
-              morphemeId,
-              entryRef,
-              senseRef,
-            }),
-          ),
+      linkMorphemeSense: (analysisId, morphemeId, entryRef, senseRef) =>
+        row('linkAnalysisMorphemeSense', (args) =>
+          papi.commands.sendCommand('interlinearizer.linkAnalysisMorphemeSense', {
+            ...args,
+            analysisId,
+            morphemeId,
+            entryRef,
+            senseRef,
+          }),
         ),
-      unlinkMorphemeSense: async (analysisId, morphemeId, keepGloss) =>
-        outcomeOf(
-          await send('unlinkAnalysisMorphemeSense', (args) =>
-            papi.commands.sendCommand('interlinearizer.unlinkAnalysisMorphemeSense', {
-              ...args,
-              analysisId,
-              morphemeId,
-              keepGloss,
-            }),
-          ),
+      unlinkMorphemeSense: (analysisId, morphemeId, keepGloss) =>
+        row('unlinkAnalysisMorphemeSense', (args) =>
+          papi.commands.sendCommand('interlinearizer.unlinkAnalysisMorphemeSense', {
+            ...args,
+            analysisId,
+            morphemeId,
+            keepGloss,
+          }),
         ),
-      adoptSenseGloss: async (analysisId, value) =>
-        outcomeOf(
-          await send('adoptAnalysisSenseGloss', (args) =>
-            papi.commands.sendCommand('interlinearizer.adoptAnalysisSenseGloss', {
-              ...args,
-              analysisId,
-              value,
-            }),
-          ),
+      adoptSenseGloss: (analysisId, value) =>
+        row('adoptAnalysisSenseGloss', (args) =>
+          papi.commands.sendCommand('interlinearizer.adoptAnalysisSenseGloss', {
+            ...args,
+            analysisId,
+            value,
+          }),
         ),
-      adoptMorphemeSenseGloss: async (analysisId, morphemeId, value) =>
-        outcomeOf(
-          await send('adoptAnalysisMorphemeSenseGloss', (args) =>
-            papi.commands.sendCommand('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
-              ...args,
-              analysisId,
-              morphemeId,
-              value,
-            }),
-          ),
+      adoptMorphemeSenseGloss: (analysisId, morphemeId, value) =>
+        row('adoptAnalysisMorphemeSenseGloss', (args) =>
+          papi.commands.sendCommand('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
+            ...args,
+            analysisId,
+            morphemeId,
+            value,
+          }),
         ),
       deleteAnalyses: async (analysisIds) => {
         await send('deleteAnalyses', (args) =>
@@ -537,16 +521,14 @@ export function useAnalysisRowDispatch(): {
           }),
         );
       },
-      mergeAll: async (survivorAnalysisId, mergedAnalysisIds, content) =>
-        outcomeOf(
-          await send('mergeAnalysesInto', (args) =>
-            papi.commands.sendCommand('interlinearizer.mergeAnalysesInto', {
-              ...args,
-              survivorAnalysisId,
-              mergedAnalysisIds: [...mergedAnalysisIds],
-              content,
-            }),
-          ),
+      mergeAll: (survivorAnalysisId, mergedAnalysisIds, content) =>
+        row('mergeAnalysesInto', (args) =>
+          papi.commands.sendCommand('interlinearizer.mergeAnalysesInto', {
+            ...args,
+            survivorAnalysisId,
+            mergedAnalysisIds: [...mergedAnalysisIds],
+            content,
+          }),
         ),
     };
   }, [edit]);

@@ -100,6 +100,28 @@ describe('useSentinelExtend', () => {
     expect(global.ioInstances).toHaveLength(0);
   });
 
+  it('ignores a delivery from an observer it has replaced', () => {
+    const { root, leading } = mountRootAndSentinels();
+    const onReach = jest.fn();
+    const { rerender } = renderHook(
+      ({ key }: { key: number }) =>
+        useSentinelExtend({
+          root,
+          sentinels: [['leading', leading]],
+          margin: 400,
+          onReach,
+          resubscribeKeys: [key],
+        }),
+      { initialProps: { key: 0 } },
+    );
+    const replaced = global.ioInstances[0];
+    rerender({ key: 1 });
+
+    act(() => replaced.callback([{ target: leading, isIntersecting: true }]));
+
+    expect(onReach).not.toHaveBeenCalled();
+  });
+
   it('re-subscribes when a key changes', () => {
     const { root, leading } = mountRootAndSentinels();
     const { rerender } = renderHook(

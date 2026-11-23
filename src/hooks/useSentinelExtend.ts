@@ -54,8 +54,12 @@ export default function useSentinelExtend<E extends string>({
       if (el) edges.set(el, edge);
     });
     if (!rootEl || edges.size === 0 || !isEnabled) return undefined;
+    // An observer can deliver entries it queued before it was disconnected. Those were measured
+    // against a window since replaced, so only the current subscription reports.
+    let isSubscribed = true;
     const observer = new IntersectionObserver(
       (entries) => {
+        if (!isSubscribed) return;
         const reached = new Set<E>();
         entries.forEach((entry) => {
           const edge = edges.get(entry.target);
@@ -67,7 +71,10 @@ export default function useSentinelExtend<E extends string>({
       { root: rootEl, rootMargin: `${margin}px`, threshold: 0 },
     );
     edges.forEach((_edge, el) => observer.observe(el));
-    return () => observer.disconnect();
+    return () => {
+      isSubscribed = false;
+      observer.disconnect();
+    };
     // The sentinels and keys are spread in, each caller passing the same number every render, so the
     // observer re-subscribes on a change to any one of them.
     // eslint-disable-next-line react-hooks/exhaustive-deps

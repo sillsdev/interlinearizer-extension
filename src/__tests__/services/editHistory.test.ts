@@ -665,6 +665,19 @@ describe('EditHistory re-anchoring', () => {
     expect(restored.token.tokenRef).toBe(tokenRefOf(after, 'beta'));
   });
 
+  it('redoes a link it undid after a pass re-anchored it, at the text the pass anchored to', async () => {
+    const { history, pass, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await pass(after);
+    await history.undo();
+
+    await history.redo();
+
+    expect((await storedLink()).token.tokenRef).toBe(tokenRefOf(after, 'beta'));
+  });
+
   it('returns the changes that reverted the edit with those that re-anchored them', async () => {
     const { history, pass } = makeReanchoringHistory();
     const before = genesis('alpha beta');

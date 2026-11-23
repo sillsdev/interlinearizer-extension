@@ -297,12 +297,20 @@ export async function writeGloss(buffer: ChangeBuffer, request: WriteGlossReques
  * keeps the earlier of its own creation date and the replaced approval's. A token with no approval
  * and no link to the payload gets a new link. The payload that the replaced approval named goes
  * once nothing links it.
+ *
+ * @throws When `surfaceText` does not fold like the payload's surface text.
  */
 export async function approveAnalysisForToken(
   buffer: ChangeBuffer,
   { tokenRef, surfaceText, analysisId, now, linkId }: ApproveAnalysisRequest,
 ): Promise<void> {
-  if ((await buffer.getTokenAnalyses([analysisId])).length === 0) return;
+  const [analysis] = await buffer.getTokenAnalyses([analysisId]);
+  if (!analysis) return;
+  if (normalizeSurfaceForm(analysis.surfaceText) !== normalizeSurfaceForm(surfaceText)) {
+    throw new Error(
+      `Cannot approve analysis ${analysisId} for token ${tokenRef}: "${surfaceText}" does not fold like "${analysis.surfaceText}"`,
+    );
+  }
   const resolved = await resolveApprovedAnalysis(buffer, tokenRef);
   if (resolved?.link.analysisId === analysisId) return;
 

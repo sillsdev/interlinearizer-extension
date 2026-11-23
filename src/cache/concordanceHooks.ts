@@ -18,9 +18,10 @@ const CONCORDANCE_QUERIES: readonly AnalysisQuery[] = ['getConcordance', 'getTex
  *
  * A change to the analysis alters a form's row or occurrences only through the approvals filed
  * under the form, or the analyses those approvals name. A change that touches either lists the form
- * among its `forms`, folded as the concordance folds its rows. The order of the rows changes only
- * with the text. A change to the text names the read status or a book whole. A change that lists no
- * forms may alter every answer, as a switch of the analysis language does.
+ * among its `forms`, folded as the concordance folds its rows. That holds because approving an
+ * analysis for a token refuses a token that folds unlike the analysis. The order of the rows
+ * changes only with the text. A change to the text names the read status or a book whole. A change
+ * that lists no forms may alter every answer, as a switch of the analysis language does.
  */
 export function mayAlterConcordance(
   change: SessionAnalysisChange,

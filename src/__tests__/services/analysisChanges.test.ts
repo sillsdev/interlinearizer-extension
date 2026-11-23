@@ -57,6 +57,22 @@ describe('describeChange', () => {
     });
   });
 
+  it("names the form of a removed token link's token", async () => {
+    const link = makeTokenLink('ta-created', ref('created'), { surfaceText: 'Created' });
+    const changes: ChangeSet = {
+      intent: 'writeGloss',
+      tokenAnalysisLinks: { puts: [], deletes: [link.id] },
+    };
+    const inverse: ChangeSet = {
+      intent: 'writeGloss',
+      tokenAnalysisLinks: { puts: [link], deletes: [] },
+    };
+
+    const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
+
+    expect(change.forms).toStrictEqual(['created']);
+  });
+
   it('names where a moved link was and where it went, joining neighboring segments into one range', async () => {
     const before = makeTokenLink('ta-a', ref('In'), { id: 'tl' });
     const after = makeTokenLink('ta-b', ref('God'), { id: 'tl' });

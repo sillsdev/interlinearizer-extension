@@ -91,7 +91,6 @@ function anyText(value: MultiString | undefined, language: string): string {
   );
 }
 
-/** Whether two refs name the same sense. */
 function sameSense(a: SenseRef | undefined, b: SenseRef): boolean {
   return (
     a !== undefined &&
@@ -101,7 +100,6 @@ function sameSense(a: SenseRef | undefined, b: SenseRef): boolean {
   );
 }
 
-/** Whether two refs name the same entry. */
 function sameEntry(a: EntryRef, b: EntryRef): boolean {
   return a.authority === b.authority && a.projectId === b.projectId && a.entryId === b.entryId;
 }

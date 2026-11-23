@@ -143,8 +143,9 @@ declare module 'interlinearizer/lexicon' {
      * the project in view is never taken as the one meant. A ref naming a project or a sense the
      * lexicon does not have misses too.
      *
-     * @returns The sense, or `undefined` when the lexicon has no such sense or cannot be reached.
-     * @throws When the lexicon is reached but the look-up fails.
+     * @returns The sense, or `undefined` when the lexicon has no such sense or no software is there
+     *   to ask.
+     * @throws When asking the lexicon's software fails, a lost connection included.
      */
     resolveSense: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
 
@@ -152,9 +153,9 @@ declare module 'interlinearizer/lexicon' {
      * Lists every sense of the entry owning the sense named by `ref`, that sense included. The ref
      * is validated as {@link resolveSense} validates one.
      *
-     * @returns The entry's senses, or `undefined` when the lexicon has no such sense or cannot be
-     *   reached.
-     * @throws When the lexicon is reached but the look-up fails.
+     * @returns The entry's senses, or `undefined` when the lexicon has no such sense or no software
+     *   is there to ask.
+     * @throws When asking the lexicon's software fails, a lost connection included.
      */
     listEntrySenses: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
 

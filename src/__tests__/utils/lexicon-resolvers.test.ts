@@ -28,7 +28,7 @@ function stubResolver(
     authorities,
     capabilities,
     resolveSense: jest.fn(async () => SENSE),
-    searchByForm: jest.fn(async () => []),
+    searchSenses: jest.fn(async () => []),
     createEntry: jest.fn(async () => {
       throw new Error('unused');
     }),

@@ -1,5 +1,5 @@
 import type { SenseRef } from 'interlinearizer';
-import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
+import type { ResolvedSense, SenseCandidate, SenseQuery } from 'interlinearizer/lexicon';
 import {
   createContext,
   useContext,
@@ -127,15 +127,15 @@ export function useLinkedGloss(
 }
 
 /**
- * Searches the connected lexicon for the senses a form could link to.
+ * Searches the connected lexicon for the senses a query matches.
  *
  * @returns The search, bound to the first connected lexicon that can search; `undefined` when none
  *   can. The function keeps its identity while that lexicon stays the same.
  */
-export function useLexiconSearch(): ((form: string) => Promise<SenseCandidate[]>) | undefined {
+export function useLexiconSearch(): ((query: SenseQuery) => Promise<SenseCandidate[]>) | undefined {
   const resolver = useContext(LexiconRegistryContext).resolverWith('search');
   return useMemo(
-    () => (resolver ? (form: string) => resolver.searchByForm(form) : undefined),
+    () => (resolver ? (query: SenseQuery) => resolver.searchSenses(query) : undefined),
     [resolver],
   );
 }

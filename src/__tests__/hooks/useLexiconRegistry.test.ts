@@ -76,7 +76,7 @@ function stubResolver(lexiconId?: string) {
       msas: false,
     },
     resolveSense: jest.fn(async () => undefined),
-    searchByForm: jest.fn(async () => []),
+    searchSenses: jest.fn(async () => []),
     createEntry: jest.fn(async () => {
       throw new Error('unused');
     }),

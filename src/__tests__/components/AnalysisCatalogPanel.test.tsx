@@ -14,7 +14,7 @@ import type {
   TextAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
-import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
+import type { ResolvedSense, SenseCandidate, SenseQuery } from 'interlinearizer/lexicon';
 import {
   createRef,
   useEffect,
@@ -162,8 +162,8 @@ type PanelOptions = Partial<{
   /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
   /** Senses of the connected lexicon, keyed by sense id. Omitted, no lexicon is connected. */
   senses: Record<string, ResolvedSense>;
-  /** Searches the connected lexicon for the senses of a form. Omitted, the lexicon cannot search. */
-  search: (form: string) => Promise<SenseCandidate[]>;
+  /** Searches the connected lexicon for senses. Omitted, the lexicon cannot search. */
+  search: (query: SenseQuery) => Promise<SenseCandidate[]>;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */

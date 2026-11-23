@@ -2,6 +2,7 @@
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { SenseRef } from 'interlinearizer';
+import type { SenseQuery } from 'interlinearizer/lexicon';
 import type { ReactNode } from 'react';
 import {
   LexiconSensesProvider,
@@ -255,17 +256,18 @@ describe('useLexiconSearch', () => {
   });
 
   it('searches through the first lexicon that can', async () => {
-    const searchByForm = jest.fn(async () => [CANDIDATE]);
+    const searchSenses = jest.fn(async () => [CANDIDATE]);
     const { result } = renderHook(() => useLexiconSearch(), {
       wrapper: connecting(nullLexiconResolver, {
         ...nullLexiconResolver,
         capabilities: { ...nullLexiconResolver.capabilities, search: true },
-        searchByForm,
+        searchSenses,
       }),
     });
+    const query: SenseQuery = { text: 'wat', field: 'gloss', exact: true, writingSystem: 'en' };
 
-    await expect(result.current?.('wat')).resolves.toEqual([CANDIDATE]);
-    expect(searchByForm).toHaveBeenCalledWith('wat');
+    await expect(result.current?.(query)).resolves.toEqual([CANDIDATE]);
+    expect(searchSenses).toHaveBeenCalledWith(query);
   });
 
   it('keeps one function across renders while the lexicons stay the same', () => {

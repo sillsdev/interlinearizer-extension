@@ -24,6 +24,9 @@ export interface LexiconEntry {
   /** The form the entry is listed under. */
   lexemeForm: LexiconMultiString;
 
+  /** The form the entry is cited under, where the lexicon records one apart from its lexeme form. */
+  citationForm?: LexiconMultiString;
+
   senses: LexiconSense[];
 }
 

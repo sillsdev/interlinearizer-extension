@@ -1,11 +1,31 @@
 import type { MultiString, SenseRef } from 'interlinearizer';
-import type { SenseCandidate } from 'interlinearizer/lexicon';
-import { BookAlert, BookOpen } from 'lucide-react';
-import { Button, Popover, PopoverContent, PopoverTrigger, Spinner } from 'platform-bible-react';
+import type { SenseCandidate, SenseQuery } from 'interlinearizer/lexicon';
+import { BookAlert, BookOpen, TextSearch } from 'lucide-react';
+import {
+  Button,
+  Checkbox,
+  Input,
+  Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  RadioGroup,
+  RadioGroupItem,
+  Spinner,
+} from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { useLexiconSearch, useLinkedGloss, type LinkedGloss } from './LexiconSenses';
 import LocalizedTooltip from './LocalizedTooltip';
+import { ModalShell } from './modals/ModalShell';
 import { multiStringTextByLanguage } from '../utils/multi-string';
 
 /** Localized string keys a {@link CatalogSenseControl} renders. */
@@ -27,6 +47,18 @@ export const SENSE_CONTROL_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_senseKeepGloss%',
   '%interlinearizer_analysisCatalog_senseRemoveGloss%',
   '%interlinearizer_analysisCatalog_senseCancel%',
+  '%interlinearizer_analysisCatalog_senseQueryFormContains%',
+  '%interlinearizer_analysisCatalog_senseQueryFormExact%',
+  '%interlinearizer_analysisCatalog_senseQueryGlossContains%',
+  '%interlinearizer_analysisCatalog_senseQueryGlossExact%',
+  '%interlinearizer_analysisCatalog_senseRefine%',
+  '%interlinearizer_analysisCatalog_senseRefineTitle%',
+  '%interlinearizer_analysisCatalog_senseRefineText%',
+  '%interlinearizer_analysisCatalog_senseRefineField%',
+  '%interlinearizer_analysisCatalog_senseRefineForm%',
+  '%interlinearizer_analysisCatalog_senseRefineGloss%',
+  '%interlinearizer_analysisCatalog_senseRefineExact%',
+  '%interlinearizer_analysisCatalog_senseRefineSubmit%',
 ] as const satisfies `%${string}%`[];
 
 /** What the popover is showing. */
@@ -37,6 +69,26 @@ type SearchOutcome =
   | { status: 'pending' }
   | { status: 'failed' }
   | { status: 'found'; candidates: readonly SenseCandidate[] };
+
+/** The wording that says what a query matches, by the field it searches and whether it is exact. */
+const QUERY_LABEL_KEYS = {
+  form: {
+    contains: '%interlinearizer_analysisCatalog_senseQueryFormContains%',
+    exact: '%interlinearizer_analysisCatalog_senseQueryFormExact%',
+  },
+  gloss: {
+    contains: '%interlinearizer_analysisCatalog_senseQueryGlossContains%',
+    exact: '%interlinearizer_analysisCatalog_senseQueryGlossExact%',
+  },
+} as const satisfies Record<SenseQuery['field'], Record<'contains' | 'exact', string>>;
+
+/** Says what `query` matches, so a search the user changed is not mistaken for the default one. */
+function queryLabel(query: SenseQuery, localizedStrings: LanguageStrings): string {
+  return formatReplacementString(
+    localizedStrings[QUERY_LABEL_KEYS[query.field][query.exact ? 'exact' : 'contains']],
+    { text: query.text, language: query.writingSystem ?? '' },
+  );
+}
 
 /** What the control says about `link`: what the sense's gloss is, or that the link exists. */
 function linkLabel(link: LinkedGloss, localizedStrings: LanguageStrings): string {
@@ -119,7 +171,7 @@ function CandidateButton({
     anyText(candidate.gloss, analysisLanguage) ||
     localizedStrings['%interlinearizer_analysisCatalog_noGloss%'];
   const detail = [
-    anyText(candidate.lexemeForm, analysisLanguage),
+    anyText(candidate.headword, analysisLanguage),
     candidate.senseLabel ?? '',
     anyText(candidate.definition, analysisLanguage),
   ].filter((part) => part !== '');
@@ -148,42 +200,47 @@ function CandidateButton({
   );
 }
 
-/** The senses the lexicon has for `form`, listed to pick from. */
+/** The senses the lexicon has for `query`, listed to pick from. */
 function SearchView({
-  form,
+  query,
   search,
   senseRef,
   analysisLanguage,
   localizedStrings,
   onPick,
+  onRefine,
   onBack,
 }: Readonly<{
-  form: string;
-  search: (form: string) => Promise<SenseCandidate[]>;
+  query: SenseQuery;
+  search: (query: SenseQuery) => Promise<SenseCandidate[]>;
   /** The sense the form links to now, which the list marks. */
   senseRef?: SenseRef;
   analysisLanguage: string;
   localizedStrings: LanguageStrings;
   onPick: (candidate: SenseCandidate) => void;
+  /** Asks to change what the search matches. */
+  onRefine: () => void;
   /** Returns to the menu; without it, the view offers no way back. */
   onBack?: () => void;
 }>) {
-  const [outcome, setOutcome] = useState<SearchOutcome>({ status: 'pending' });
+  // Kept with the query it answers, so the view reads as pending while a newer query is out.
+  const [answer, setAnswer] = useState<{ query: SenseQuery; outcome: SearchOutcome }>();
+  const outcome: SearchOutcome = answer?.query === query ? answer.outcome : { status: 'pending' };
 
   useEffect(() => {
     let abandoned = false;
     (async () => {
       try {
-        const candidates = await search(form);
-        if (!abandoned) setOutcome({ status: 'found', candidates });
+        const candidates = await search(query);
+        if (!abandoned) setAnswer({ query, outcome: { status: 'found', candidates } });
       } catch {
-        if (!abandoned) setOutcome({ status: 'failed' });
+        if (!abandoned) setAnswer({ query, outcome: { status: 'failed' } });
       }
     })();
     return () => {
       abandoned = true;
     };
-  }, [form, search]);
+  }, [query, search]);
 
   let body: ReactNode;
   if (outcome.status === 'pending') body = <Spinner className="tw:size-4" />;
@@ -201,7 +258,10 @@ function SearchView({
     );
   else
     body = (
-      <div className="tw:flex tw:flex-col tw:gap-0.5">
+      <div
+        className="tw:flex tw:min-h-0 tw:flex-col tw:gap-0.5 tw:overflow-y-auto"
+        data-testid="catalog-sense-candidates"
+      >
         {outcome.candidates.map((candidate) => (
           <CandidateButton
             analysisLanguage={analysisLanguage}
@@ -215,6 +275,7 @@ function SearchView({
       </div>
     );
 
+  const refineLabel = localizedStrings['%interlinearizer_analysisCatalog_senseRefine%'];
   return (
     <>
       {onBack && (
@@ -222,8 +283,122 @@ function SearchView({
           {localizedStrings['%interlinearizer_analysisCatalog_senseBack%']}
         </Button>
       )}
+      <div className="tw:flex tw:items-center tw:gap-1">
+        <p
+          className="tw:min-w-0 tw:flex-1 tw:break-words tw:text-xs tw:text-muted-foreground"
+          data-testid="catalog-sense-query"
+        >
+          {queryLabel(query, localizedStrings)}
+        </p>
+        <LocalizedTooltip label={refineLabel}>
+          <Button
+            aria-label={refineLabel}
+            className="tw:shrink-0"
+            data-testid="catalog-sense-refine"
+            size="icon-xs"
+            variant="ghost"
+            onClick={onRefine}
+          >
+            <TextSearch aria-hidden="true" className="tw:size-3" />
+          </Button>
+        </LocalizedTooltip>
+      </div>
       {body}
     </>
+  );
+}
+
+/**
+ * Asks what a sense search should match: which text, whether in an entry's form or in a sense's
+ * gloss, and whether whole or in part. The dialog starts from `query`. Glosses are searched in
+ * `analysisLanguage` alone.
+ */
+function SenseQueryDialog({
+  query,
+  analysisLanguage,
+  localizedStrings,
+  onSubmit,
+  onClose,
+}: Readonly<{
+  query: SenseQuery;
+  analysisLanguage: string;
+  localizedStrings: LanguageStrings;
+  onSubmit: (query: SenseQuery) => void;
+  onClose: () => void;
+}>) {
+  const [text, setText] = useState(query.text);
+  const [field, setField] = useState(query.field);
+  const [exact, setExact] = useState(query.exact);
+  const id = useId();
+  const trimmed = text.trim();
+
+  return (
+    <ModalShell
+      title={localizedStrings['%interlinearizer_analysisCatalog_senseRefineTitle%']}
+      titleTestId="catalog-sense-refine-title"
+      width="tw:w-80"
+      onClose={onClose}
+    >
+      <form
+        className="tw:flex tw:flex-col tw:gap-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit({
+            text: trimmed,
+            field,
+            exact,
+            ...(field === 'gloss' && { writingSystem: analysisLanguage }),
+          });
+        }}
+      >
+        <div className="tw:flex tw:flex-col tw:gap-1">
+          <Label htmlFor={`${id}-text`}>
+            {localizedStrings['%interlinearizer_analysisCatalog_senseRefineText%']}
+          </Label>
+          <Input id={`${id}-text`} value={text} onChange={(e) => setText(e.target.value)} />
+        </div>
+        <RadioGroup
+          aria-label={localizedStrings['%interlinearizer_analysisCatalog_senseRefineField%']}
+          className="tw:flex tw:gap-4"
+          value={field}
+          onValueChange={(value) => setField(value === 'gloss' ? 'gloss' : 'form')}
+        >
+          <div className="tw:flex tw:items-center tw:gap-2 tw:text-sm">
+            <RadioGroupItem id={`${id}-form`} value="form" />
+            <Label htmlFor={`${id}-form`}>
+              {localizedStrings['%interlinearizer_analysisCatalog_senseRefineForm%']}
+            </Label>
+          </div>
+          <div className="tw:flex tw:items-center tw:gap-2 tw:text-sm">
+            <RadioGroupItem id={`${id}-gloss`} value="gloss" />
+            <Label htmlFor={`${id}-gloss`}>
+              {formatReplacementString(
+                localizedStrings['%interlinearizer_analysisCatalog_senseRefineGloss%'],
+                { language: analysisLanguage },
+              )}
+            </Label>
+          </div>
+        </RadioGroup>
+        <div className="tw:flex tw:items-center tw:gap-2 tw:text-sm">
+          <Checkbox
+            checked={exact}
+            id={`${id}-exact`}
+            onCheckedChange={(checked) => setExact(checked === true)}
+          />
+          <Label htmlFor={`${id}-exact`}>
+            {localizedStrings['%interlinearizer_analysisCatalog_senseRefineExact%']}
+          </Label>
+        </div>
+        <div className="tw:modal-actions">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {localizedStrings['%interlinearizer_analysisCatalog_senseCancel%']}
+          </Button>
+          <Button disabled={trimmed === ''} type="submit">
+            {localizedStrings['%interlinearizer_analysisCatalog_senseRefineSubmit%']}
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }
 
@@ -234,7 +409,8 @@ function SearchView({
  * the sense search at once, because linking is the only action. Where there is nothing to do, a
  * linked form shows only the mark, and an unlinked one shows nothing.
  *
- * Candidates are searched by `form` as it stands, so a form with no text cannot be linked.
+ * The search first looks for entries whose form contains `form`, so a form with no text cannot be
+ * linked. The user can then change the text, search glosses instead, or ask for an exact match.
  */
 export default function CatalogSenseControl({
   form,
@@ -273,6 +449,13 @@ export default function CatalogSenseControl({
   const search = useLexiconSearch();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('menu');
+  const [editedQuery, setEditedQuery] = useState<SenseQuery>();
+  const [refining, setRefining] = useState(false);
+  const formQuery = useMemo<SenseQuery>(
+    () => ({ text: form, field: 'form', exact: false }),
+    [form],
+  );
+  const query = editedQuery ?? formQuery;
 
   const linked = senseRef !== undefined;
   const canLink = !readOnly && search !== undefined && form !== '';
@@ -289,9 +472,14 @@ export default function CatalogSenseControl({
     return <StaticMark className={className} label={label} link={link} style={style} />;
 
   const Icon = linked ? linkIcon(link) : BookOpen;
+  const showMenu = () => {
+    setView('menu');
+    setEditedQuery(undefined);
+    setRefining(false);
+  };
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
-    if (!next) setView('menu');
+    if (!next) showMenu();
   };
   const close = () => handleOpenChange(false);
 
@@ -300,15 +488,16 @@ export default function CatalogSenseControl({
     content = (
       <SearchView
         analysisLanguage={analysisLanguage}
-        form={form}
         localizedStrings={localizedStrings}
+        query={query}
         search={search}
         senseRef={senseRef}
-        onBack={linked ? () => setView('menu') : undefined}
+        onBack={linked ? showMenu : undefined}
         onPick={(candidate) => {
           onLink(candidate);
           close();
         }}
+        onRefine={() => setRefining(true)}
       />
     );
   else if (view === 'confirmUnlink')
@@ -418,11 +607,32 @@ export default function CatalogSenseControl({
       {open && (
         <PopoverContent
           align="start"
-          className="tw:flex tw:w-72 tw:flex-col tw:gap-1 tw:p-2"
+          className="tw:flex tw:max-h-(--radix-popover-content-available-height) tw:w-72 tw:flex-col tw:gap-1 tw:p-2"
           data-testid="catalog-sense-popover"
+          // Platform.Bible paints popovers above dialogs, so the popover would cover the search
+          // dialog. It is hidden rather than closed, keeping it mounted to show what the dialog's
+          // search finds.
+          style={refining ? { visibility: 'hidden' } : undefined}
+          // The search dialog lies outside the popover, so focus leaves the popover when the dialog
+          // opens. The popover stays open regardless.
+          onInteractOutside={(event) => {
+            if (refining) event.preventDefault();
+          }}
         >
           {content}
         </PopoverContent>
+      )}
+      {open && refining && (
+        <SenseQueryDialog
+          analysisLanguage={analysisLanguage}
+          localizedStrings={localizedStrings}
+          query={query}
+          onClose={() => setRefining(false)}
+          onSubmit={(next) => {
+            setEditedQuery(next);
+            setRefining(false);
+          }}
+        />
       )}
     </Popover>
   );

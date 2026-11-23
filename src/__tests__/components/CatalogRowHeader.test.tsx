@@ -3,7 +3,7 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { SenseCandidate } from 'interlinearizer/lexicon';
+import type { SenseCandidate, SenseQuery } from 'interlinearizer/lexicon';
 import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps } from 'react';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from '../../components/CatalogRowHeader';
@@ -60,7 +60,7 @@ function renderHeader(
   overrides: Partial<ComponentProps<typeof CatalogRowHeader>> = {},
   lexicon: Readonly<{
     readOnly?: boolean;
-    search?: (form: string) => Promise<SenseCandidate[]>;
+    search?: (query: SenseQuery) => Promise<SenseCandidate[]>;
   }> = {},
 ) {
   const props = {

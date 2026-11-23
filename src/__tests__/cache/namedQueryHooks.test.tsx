@@ -1,17 +1,26 @@
 /// <reference types="jest" />
 
 import { logger } from '@papi/frontend';
+import type { SessionAnalysisChange } from 'interlinearizer';
 import { act, renderHook } from '@testing-library/react';
-import { useNamedChanges, useNamedFetch } from '../../cache/namedQueryHooks';
+import {
+  type ChangeAffects,
+  type NamedFetchOptions,
+  useNamedChanges,
+  useNamedFetch,
+} from '../../cache/namedQueryHooks';
 import { usePageSession } from '../../cache/pageHooks';
 import { relayChange } from './fake-host';
 import { changeNaming, wrapperOver } from './hook-sessions';
 
 /** Renders {@link useNamedChanges} for `query`, beside the session it reads. */
-async function renderChanges(query: Parameters<typeof useNamedChanges>[0] = 'getConcordance') {
+async function renderChanges(
+  query: Parameters<typeof useNamedChanges>[0],
+  counts?: Parameters<typeof useNamedChanges>[1],
+) {
   const wrapper = await wrapperOver();
   const { result } = renderHook(
-    () => ({ changes: useNamedChanges(query), session: usePageSession() }),
+    () => ({ changes: useNamedChanges(query, counts), session: usePageSession() }),
     { wrapper },
   );
   return result;
@@ -19,7 +28,7 @@ async function renderChanges(query: Parameters<typeof useNamedChanges>[0] = 'get
 
 describe('useNamedChanges', () => {
   it('counts each change to the session that names the query', async () => {
-    const result = await renderChanges();
+    const result = await renderChanges('getConcordance');
 
     relayChange(changeNaming(result.current.session.sessionId, ['getConcordance']));
     relayChange(changeNaming(result.current.session.sessionId, ['getConcordance']));
@@ -28,7 +37,7 @@ describe('useNamedChanges', () => {
   });
 
   it('ignores a change that names other queries', async () => {
-    const result = await renderChanges();
+    const result = await renderChanges('getConcordance');
 
     relayChange(changeNaming(result.current.session.sessionId, ['getCatalogRows']));
 
@@ -56,15 +65,27 @@ describe('useNamedChanges', () => {
   });
 
   it('ignores a change to another session', async () => {
-    const result = await renderChanges();
+    const result = await renderChanges('getConcordance');
 
     relayChange(changeNaming('another-session', ['getConcordance']));
 
     expect(result.current.changes).toBe(0);
   });
 
+  it('ignores a change that the given rule rejects', async () => {
+    const result = await renderChanges('getConcordance', (change) => change.forms.length === 0);
+
+    relayChange(changeNaming(result.current.session.sessionId, ['getConcordance']));
+    relayChange({
+      ...changeNaming(result.current.session.sessionId, ['getConcordance']),
+      forms: ['a'],
+    });
+
+    expect(result.current.changes).toBe(1);
+  });
+
   it('ignores a Scripture edit addressed to the source project', async () => {
-    const result = await renderChanges();
+    const result = await renderChanges('getConcordance');
 
     relayChange({ sourceProjectId: 'src', changeId: 'c', scriptureEdit: { bookId: 'GEN' } });
 
@@ -74,21 +95,20 @@ describe('useNamedChanges', () => {
 
 describe('useNamedFetch', () => {
   /**
-   * Renders {@link useNamedFetch} for `getConcordance` under the key that `key.current` holds,
-   * keeping the last key's answer when `keepPrevious`.
+   * Renders {@link useNamedFetch} for `getConcordance` under the key that `key.current` holds, with
+   * `options`.
    */
   async function renderFetch(
     key: { current: string | undefined },
     fetch: () => Promise<string>,
-    keepPrevious = false,
+    options: NamedFetchOptions<string> = {},
   ) {
     const wrapper = await wrapperOver();
     // Inside `act`, so that an answer resolving at once lands within it.
     return act(async () =>
       renderHook(
         () => ({
-          answer: useNamedFetch('getConcordance', 'the answer', key.current, fetch, keepPrevious)
-            ?.value,
+          answer: useNamedFetch('getConcordance', 'the answer', key.current, fetch, options)?.value,
           session: usePageSession(),
         }),
         { wrapper },
@@ -173,7 +193,7 @@ describe('useNamedFetch', () => {
     const { result, rerender } = await renderFetch(
       key,
       () => (key.current === 'a' ? Promise.resolve('first') : new Promise(() => {})),
-      true,
+      { keepPrevious: true },
     );
     key.current = undefined;
     await act(async () => rerender());
@@ -197,5 +217,105 @@ describe('useNamedFetch', () => {
       'Interlinearizer: could not fetch the answer',
       expect.any(Error),
     );
+  });
+
+  describe('given a rule for which changes affect the answer', () => {
+    /** A rule that lets through only the changes naming no forms. */
+    const formless: ChangeAffects<string> = (change) => change.forms.length === 0;
+
+    /** A change to `sessionId` that names `getConcordance` and the form `a`. */
+    function formChange(sessionId: string): SessionAnalysisChange {
+      return { ...changeNaming(sessionId, ['getConcordance']), forms: ['a'] };
+    }
+
+    /**
+     * Relays a change to `sessionId` that names `getConcordance` and the form `a`, letting any
+     * fetch it starts land.
+     */
+    async function relayForm(sessionId: string): Promise<void> {
+      await act(async () => relayChange(formChange(sessionId)));
+    }
+
+    it('skips a change that the rule rules out for the answer held', async () => {
+      const fetch = jest.fn(async () => 'answer');
+      const affects = jest.fn(formless);
+      const { result } = await renderFetch({ current: 'a' }, fetch, { affects });
+
+      await relayForm(result.current.session.sessionId);
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(affects).toHaveBeenCalledWith(expect.objectContaining({ forms: ['a'] }), 'answer');
+    });
+
+    it('fetches again for a change that the rule lets through', async () => {
+      const fetch = jest.fn(async () => 'answer');
+      const { result } = await renderFetch({ current: 'a' }, fetch, { affects: formless });
+
+      await relayNamed(result.current.session.sessionId);
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('fetches again for a change that arrives while a fetch is under way, without asking the rule', async () => {
+      const releases: ((answer: string) => void)[] = [];
+      const fetch = jest.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            releases.push(resolve);
+          }),
+      );
+      const affects = jest.fn(formless);
+      const { result } = await renderFetch({ current: 'a' }, fetch, { affects });
+
+      await relayForm(result.current.session.sessionId);
+      await act(async () => releases[0]('first'));
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(affects).not.toHaveBeenCalled();
+    });
+
+    it('fetches again for a change that arrives after a failed fetch, without asking the rule', async () => {
+      jest.spyOn(logger, 'warn').mockImplementation(() => {});
+      const fetch = jest.fn(async () => 'answer');
+      const affects = jest.fn(formless);
+      const { result } = await renderFetch({ current: 'a' }, fetch, {
+        keepPrevious: true,
+        affects,
+      });
+      fetch.mockRejectedValueOnce(new Error('offline'));
+      await relayNamed(result.current.session.sessionId);
+
+      await relayForm(result.current.session.sessionId);
+
+      expect(fetch).toHaveBeenCalledTimes(3);
+      // Asked only about the change that preceded the failure.
+      expect(affects).toHaveBeenCalledTimes(1);
+    });
+
+    it("fetches again for a change that arrives once a new key's answer is fetched but not yet rendered, without asking the rule", async () => {
+      const key: { current: string | undefined } = { current: 'a' };
+      let release = () => {};
+      const fetch = jest.fn(() =>
+        key.current === 'a'
+          ? Promise.resolve('first')
+          : new Promise<string>((resolve) => {
+              release = () => resolve('second');
+            }),
+      );
+      const affects = jest.fn(formless);
+      const { result, rerender } = await renderFetch(key, fetch, { affects });
+      key.current = 'b';
+      await act(async () => rerender());
+
+      await act(async () => {
+        release();
+        // Lets the fetch settle while `act` holds back the render that would hand over its answer.
+        await Promise.resolve();
+        relayChange(formChange(result.current.session.sessionId));
+      });
+
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(affects).not.toHaveBeenCalled();
+    });
   });
 });

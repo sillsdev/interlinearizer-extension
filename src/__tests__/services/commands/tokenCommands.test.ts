@@ -89,4 +89,36 @@ describe('approveAnalysisForToken', () => {
 
     expect(buffer.toChangeSet('approve')).toStrictEqual({ intent: 'approve' });
   });
+
+  it('refuses a token that folds unlike the payload', async () => {
+    const buffer = await bufferOver({ tokenAnalyses: [shared] });
+
+    await expect(
+      approveAnalysisForToken(buffer, {
+        ...STAMP,
+        tokenRef: 'GEN 1:1:1',
+        surfaceText: 'the',
+        analysisId: 'ta-in',
+      }),
+    ).rejects.toThrow('does not fold like');
+    expect(buffer.toChangeSet('approve')).toStrictEqual({ intent: 'approve' });
+  });
+
+  it('approves a token that differs from the payload only in case', async () => {
+    const buffer = await bufferOver({ tokenAnalyses: [shared] });
+
+    await approveAnalysisForToken(buffer, {
+      ...STAMP,
+      tokenRef: 'GEN 1:1:1',
+      surfaceText: 'in',
+      analysisId: 'ta-in',
+    });
+
+    expect(buffer.toChangeSet('approve').tokenAnalysisLinks?.puts).toStrictEqual([
+      expect.objectContaining({
+        analysisId: 'ta-in',
+        token: { tokenRef: 'GEN 1:1:1', surfaceText: 'in' },
+      }),
+    ]);
+  });
 });

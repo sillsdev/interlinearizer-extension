@@ -1,5 +1,5 @@
 import papi, { logger } from '@papi/frontend';
-import type { AnalysisQuery } from 'interlinearizer';
+import type { AnalysisQuery, SessionAnalysisChange } from 'interlinearizer';
 import { useCallback, useMemo } from 'react';
 import type {
   ConcordanceOccurrencePage,
@@ -12,6 +12,27 @@ import { usePageSession } from './pageHooks';
 /** A change that names any of these queries leaves a concordance answer out of date. */
 const CONCORDANCE_QUERIES: readonly AnalysisQuery[] = ['getConcordance', 'getTextReadStatus'];
 
+/**
+ * Whether `change` may alter what the concordance answers about any of the normalized `forms`.
+ * Answers `true` whenever the change cannot be ruled out.
+ *
+ * A change to the analysis alters a form's row or occurrences only through the approvals filed
+ * under the form, or the analyses those approvals name. A change that touches either lists the form
+ * among its `forms`, folded as the concordance folds its rows. That holds because approving an
+ * analysis for a token refuses a token that folds unlike the analysis. The order of the rows
+ * changes only with the text. A change to the text names the read status or a book whole. A change
+ * that lists no forms may alter every answer, as a switch of the analysis language does.
+ */
+export function mayAlterConcordance(
+  change: SessionAnalysisChange,
+  forms: ReadonlySet<string>,
+): boolean {
+  if (change.queries.includes('getTextReadStatus')) return true;
+  if (change.forms.length === 0) return true;
+  if (change.books.some(({ ranges }) => !ranges)) return true;
+  return change.forms.some((form) => forms.has(form));
+}
+
 /** A page of the session's concordance, as the panel reads it. */
 export type ConcordanceView = ConcordancePage &
   Readonly<{
@@ -20,9 +41,10 @@ export type ConcordanceView = ConcordancePage &
   }>;
 
 /**
- * The first `count` rows of the session's concordance, counted against `currentBook`, fetched again
- * whenever a change names the concordance or the text's read status. Keeps the last page while the
- * next is fetched. A failed fetch leaves the last page too, with {@link ConcordanceView.retry} set.
+ * The first `count` rows of the session's concordance, counted against `currentBook`. Fetched again
+ * whenever a change names the concordance or the text's read status, unless the change provably
+ * leaves every row on the page as it was. Keeps the last page while the next is fetched. A failed
+ * fetch leaves the last page too, with {@link ConcordanceView.retry} set.
  *
  * @returns `null` until the whole text has been read; `undefined` until the first answer arrives.
  */
@@ -42,7 +64,11 @@ export function useConcordanceView(
           request: { currentBook, offset: 0, count },
         }),
       ),
-    true,
+    {
+      keepPrevious: true,
+      affects: (change, held) =>
+        !held || mayAlterConcordance(change, new Set(held.rows.map(({ form }) => form))),
+    },
   );
   const page = fetched?.value;
   const retry = fetched?.failed ? fetched.retry : undefined;
@@ -52,8 +78,8 @@ export function useConcordanceView(
 /**
  * The first `count` occurrences of `form` in the session's text, with the analyses its occurrences
  * are approved to, glossed in the session's language. Fetched again whenever a change names the
- * concordance or the text's read status. Kept while the next answer is fetched, until `form` is
- * `undefined`.
+ * concordance or the text's read status, unless the change provably leaves `form` as it was. Kept
+ * while the next answer is fetched, until `form` is `undefined`.
  *
  * @returns `undefined` while `form` is `undefined`, and until the first answer arrives.
  */
@@ -74,7 +100,11 @@ export function useConcordanceOccurrences(
           request: { form: form ?? '', offset: 0, count },
         }),
       ),
-    true,
+    {
+      keepPrevious: true,
+      /* v8 ignore next -- consulted only for an answer held under a key, which a form gives */
+      affects: (change) => mayAlterConcordance(change, new Set(form === undefined ? [] : [form])),
+    },
   )?.value;
 }
 
@@ -94,7 +124,7 @@ export function useTextReadStatus(wanted: boolean): TextReadStatus | 'error' | u
       JSON.parse(
         await papi.commands.sendCommand('interlinearizer.getTextReadStatus', { sessionId }),
       ),
-    true,
+    { keepPrevious: true },
   );
   return status?.failed ? 'error' : status?.value;
 }

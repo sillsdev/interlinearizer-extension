@@ -1,8 +1,10 @@
 /// <reference types="jest" />
 
 import papi, { logger } from '@papi/frontend';
+import type { SessionAnalysisChange } from 'interlinearizer';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import {
+  mayAlterConcordance,
   useConcordanceOccurrences,
   useConcordanceView,
   useRetryTextRead,
@@ -19,6 +21,55 @@ import {
   timesSent,
   wrapperOver,
 } from './hook-sessions';
+
+/** A change naming the concordance and `forms`, with any field of `fields` in place of its own. */
+function changeTo(
+  forms: string[],
+  fields: Partial<SessionAnalysisChange> = {},
+): SessionAnalysisChange {
+  return { ...changeNaming('s', ['getConcordance']), forms, ...fields };
+}
+
+/** Relays {@link changeTo}'s change to the session that `command` was sent to. */
+function relayTo(command: string, ...change: Parameters<typeof changeTo>): void {
+  relayChange({ ...changeTo(...change), sessionId: sessionIdOf(command) });
+}
+
+describe('mayAlterConcordance', () => {
+  const shown = new Set(['and']);
+
+  it('holds for a change naming a shown form', () => {
+    expect(mayAlterConcordance(changeTo(['and', 'light']), shown)).toBe(true);
+  });
+
+  it('fails for a change naming only forms not shown', () => {
+    expect(mayAlterConcordance(changeTo(['light']), shown)).toBe(false);
+  });
+
+  it('holds for a change naming no forms', () => {
+    expect(mayAlterConcordance(changeTo([]), shown)).toBe(true);
+  });
+
+  it('holds for a change naming a book whole', () => {
+    expect(mayAlterConcordance(changeTo(['light'], { books: [{ bookId: 'GEN' }] }), shown)).toBe(
+      true,
+    );
+  });
+
+  it('fails for a change naming only ranges of a book', () => {
+    const change = changeTo(['light'], {
+      books: [{ bookId: 'GEN', ranges: [{ start: 0, end: 1 }] }],
+    });
+
+    expect(mayAlterConcordance(change, shown)).toBe(false);
+  });
+
+  it("holds for a change naming the text's read status", () => {
+    const change = changeTo(['light'], { queries: ['getConcordance', 'getTextReadStatus'] });
+
+    expect(mayAlterConcordance(change, shown)).toBe(true);
+  });
+});
 
 describe('useConcordanceView', () => {
   it('serves the first rows of the concordance, counted against the current book', async () => {
@@ -71,7 +122,31 @@ describe('useConcordanceView', () => {
     expect(result.current?.total).toBe(7);
   });
 
-  it('fetches again when a change to the session names the concordance', async () => {
+  it('fetches again when a change names a form on the page', async () => {
+    const wrapper = await wrapperOver(readText([], [BOOK]));
+    renderHook(() => useConcordanceView('GEN', 1), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.getConcordance');
+
+    relayTo('interlinearizer.getConcordance', ['and']);
+    await settle();
+
+    expect(timesSent('interlinearizer.getConcordance')).toBe(before + 1);
+  });
+
+  it('skips a change that names only forms off the page', async () => {
+    const wrapper = await wrapperOver(readText([], [BOOK]));
+    renderHook(() => useConcordanceView('GEN', 1), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.getConcordance');
+
+    relayTo('interlinearizer.getConcordance', ['beginning']);
+    await settle();
+
+    expect(timesSent('interlinearizer.getConcordance')).toBe(before);
+  });
+
+  it('fetches again when a change to the session names the concordance but no forms', async () => {
     const wrapper = await wrapperOver(readText([], [BOOK]));
     renderHook(() => useConcordanceView('GEN', 1), { wrapper });
     await settle();
@@ -163,6 +238,30 @@ describe('useConcordanceOccurrences', () => {
     await setLanguage('interlinearizer.getConcordance', 'fr');
 
     await waitFor(() => expect(result.current?.tallies[0].gloss).toBe(''));
+  });
+
+  it('fetches again when a change names the form', async () => {
+    const wrapper = await wrapperOver(readText([], [BOOK]));
+    renderHook(() => useConcordanceOccurrences('beginning', 1), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.getConcordance');
+
+    relayTo('interlinearizer.getConcordance', ['beginning']);
+    await settle();
+
+    expect(timesSent('interlinearizer.getConcordance')).toBe(before + 1);
+  });
+
+  it('skips a change that names only other forms', async () => {
+    const wrapper = await wrapperOver(readText([], [BOOK]));
+    renderHook(() => useConcordanceOccurrences('beginning', 1), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.getConcordance');
+
+    relayTo('interlinearizer.getConcordance', ['and']);
+    await settle();
+
+    expect(timesSent('interlinearizer.getConcordance')).toBe(before);
   });
 
   it('keeps the last occurrences when a fetch fails', async () => {

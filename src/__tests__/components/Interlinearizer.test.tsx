@@ -323,6 +323,13 @@ const GEN_1_EMPTY_MIDDLE_BOOK: Book = {
   ],
 };
 
+/** GEN book with a section heading between two verses. */
+const GEN_1_MID_HEADING_BOOK = makeVerseBook([
+  { sid: 'GEN 1:1', text: 'Alpha.' },
+  { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
+  { sid: 'GEN 1:2', text: 'Gamma.' },
+]);
+
 /**
  * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Exercises the
  * focus-reseed guard against a host click echoed back at chapter granularity.
@@ -2531,13 +2538,7 @@ describe('between-rows merge control', () => {
   });
 
   it('offers no merge button beside a heading', () => {
-    renderInterlinearizer({
-      book: makeVerseBook([
-        { sid: 'GEN 1:1', text: 'Alpha.' },
-        { heading: 's1', verseId: 'GEN 1:1', text: 'The Heading' },
-        { sid: 'GEN 1:2', text: 'Gamma.' },
-      ]),
-    });
+    renderInterlinearizer({ book: GEN_1_MID_HEADING_BOOK });
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
   });
 
@@ -2583,6 +2584,35 @@ describe('between-rows merge control', () => {
     );
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
     expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
+  });
+});
+
+describe('heading divider', () => {
+  it('draws a divider above a heading that follows verse text', () => {
+    renderInterlinearizer({ book: GEN_1_MID_HEADING_BOOK });
+    expect(screen.getByTestId('heading-divider').nextElementSibling).toHaveAttribute(
+      'data-segment-id',
+      'GEN 1:1/s1',
+    );
+  });
+
+  it('draws no divider above a heading that opens the book', () => {
+    const { container } = renderInterlinearizer({
+      book: makeVerseBook([
+        { heading: 's1', verseId: 'GEN 1:0', text: 'The Heading' },
+        { sid: 'GEN 1:1', text: 'Alpha.' },
+      ]),
+    });
+    expect(container.querySelector('[data-segment-id]')).toHaveAttribute(
+      'data-segment-id',
+      'GEN 1:0/s1',
+    );
+    expect(screen.queryByTestId('heading-divider')).not.toBeInTheDocument();
+  });
+
+  it('draws no divider between verse segments', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    expect(screen.queryByTestId('heading-divider')).not.toBeInTheDocument();
   });
 });
 

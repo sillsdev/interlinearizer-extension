@@ -100,6 +100,29 @@ describe('useSentinelExtend', () => {
     expect(global.ioInstances).toHaveLength(0);
   });
 
+  it('ignores a sentinel whose newest entry in a delivery left the margin', () => {
+    const { root, leading } = mountRootAndSentinels();
+    const onReach = jest.fn();
+    renderHook(() =>
+      useSentinelExtend({
+        root,
+        sentinels: [['leading', leading]],
+        margin: 400,
+        onReach,
+        resubscribeKeys: [],
+      }),
+    );
+
+    act(() =>
+      global.ioInstances[0].callback([
+        { target: leading, isIntersecting: true },
+        { target: leading, isIntersecting: false },
+      ]),
+    );
+
+    expect(onReach).not.toHaveBeenCalled();
+  });
+
   it('ignores a delivery from an observer it has replaced', () => {
     const { root, leading } = mountRootAndSentinels();
     const onReach = jest.fn();

@@ -60,13 +60,16 @@ export default function useSentinelExtend<E extends string>({
     const observer = new IntersectionObserver(
       (entries) => {
         if (!isSubscribed) return;
-        const reached = new Set<E>();
+        // Entries can span several frames, so each sentinel's newest entry decides.
+        const latest = new Map<E, boolean>();
         entries.forEach((entry) => {
           const edge = edges.get(entry.target);
           /* v8 ignore next -- every observed sentinel is registered in the edge map */
-          if (entry.isIntersecting && edge !== undefined) reached.add(edge);
+          if (edge !== undefined) latest.set(edge, entry.isIntersecting);
         });
-        reached.forEach((edge) => onReachRef.current?.(edge));
+        latest.forEach((isIntersecting, edge) => {
+          if (isIntersecting) onReachRef.current?.(edge);
+        });
       },
       { root: rootEl, rootMargin: `${margin}px`, threshold: 0 },
     );

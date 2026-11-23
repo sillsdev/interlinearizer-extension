@@ -144,6 +144,7 @@ declare module 'interlinearizer/lexicon' {
      * lexicon does not have misses too.
      *
      * @returns The sense, or `undefined` when the lexicon has no such sense.
+     * @throws When the lexicon cannot be reached.
      */
     resolveSense: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
 
@@ -152,6 +153,7 @@ declare module 'interlinearizer/lexicon' {
      * is validated as {@link resolveSense} validates one.
      *
      * @returns The entry's senses, or `undefined` when the lexicon has no such sense.
+     * @throws When the lexicon cannot be reached.
      */
     listEntrySenses: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
 

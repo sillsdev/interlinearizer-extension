@@ -34,6 +34,7 @@ export type LexiconRegistry = {
    * Resolves `ref` through the lexicon whose authority minted it.
    *
    * @returns The sense, or `undefined` when the ref is foreign or its lexicon has no such sense.
+   * @throws When the lexicon that minted `ref` cannot be reached.
    */
   resolveSense: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
 
@@ -42,6 +43,7 @@ export type LexiconRegistry = {
    * authority minted `ref`.
    *
    * @returns The senses, or `undefined` when the ref is foreign or its lexicon has no such sense.
+   * @throws When the lexicon that minted `ref` cannot be reached.
    */
   listEntrySenses: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
 

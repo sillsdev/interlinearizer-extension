@@ -37,6 +37,7 @@ export const SENSE_CONTROL_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_senseAddLink%',
   '%interlinearizer_analysisCatalog_senseChangeAction%',
   '%interlinearizer_analysisCatalog_senseNoOther%',
+  '%interlinearizer_analysisCatalog_senseOtherEntryAction%',
   '%interlinearizer_analysisCatalog_senseAdoptGloss%',
   '%interlinearizer_analysisCatalog_senseUnlink%',
   '%interlinearizer_analysisCatalog_senseLexiconGloss%',
@@ -51,7 +52,7 @@ export const SENSE_CONTROL_STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /** What the popover is showing. */
-type View = 'menu' | 'search' | 'confirmUnlink';
+type View = 'menu' | 'search' | 'otherEntry' | 'confirmUnlink';
 
 /** Fetches the senses to pick from, `undefined` meaning there are none. */
 type FindCandidates = () => Promise<SenseCandidate[] | undefined>;
@@ -279,10 +280,12 @@ function SearchView({
  * question of what to keep on unlinking.
  *
  * The candidates are fetched as the popover opens. The change of sense is disabled when the linked
- * sense's entry has no other sense.
+ * sense's entry has no other sense. The senses of other entries are searched for each time their
+ * list is opened.
  */
 function PopoverBody({
   find,
+  findOther,
   senseRef,
   link,
   canPick,
@@ -297,6 +300,8 @@ function PopoverBody({
 }: Readonly<{
   /** Fetches the senses to link to, or to change the link to. */
   find: FindCandidates | undefined;
+  /** Searches by form for a sense of any entry to replace the link with. */
+  findOther: FindCandidates | undefined;
   senseRef?: SenseRef;
   link: LinkedGloss;
   /** Whether the action that links, or changes the link, is offered. */
@@ -312,6 +317,7 @@ function PopoverBody({
 }>) {
   const [view, setView] = useState<View>('menu');
   const { outcome, retry } = useCandidates(find);
+  const other = useCandidates(view === 'otherEntry' ? findOther : undefined);
 
   const linked = senseRef !== undefined;
   const noOther =
@@ -328,6 +334,20 @@ function PopoverBody({
         outcome={outcome}
         senseRef={senseRef}
         onBack={linked ? () => setView('menu') : undefined}
+        onPick={(candidate) => {
+          onLink(candidate);
+          onClose();
+        }}
+      />
+    );
+  else if (view === 'otherEntry')
+    content = (
+      <SearchView
+        analysisLanguage={analysisLanguage}
+        localizedStrings={localizedStrings}
+        outcome={other.outcome}
+        senseRef={senseRef}
+        onBack={() => setView('menu')}
         onPick={(candidate) => {
           onLink(candidate);
           onClose();
@@ -399,6 +419,19 @@ function PopoverBody({
             </Button>
           </DisabledActionTooltip>
         )}
+        {findOther && (
+          <Button
+            className="tw:justify-start"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              other.retry();
+              setView('otherEntry');
+            }}
+          >
+            {localizedStrings['%interlinearizer_analysisCatalog_senseOtherEntryAction%']}
+          </Button>
+        )}
         {canAdopt && (
           <Button
             className="tw:justify-start"
@@ -443,8 +476,9 @@ function PopoverBody({
  * linked form shows only the mark, and an unlinked one shows nothing.
  *
  * An unlinked form links to a sense that a search by `form` turns up, so a form with no text cannot
- * be linked. A linked form changes to another sense of the linked sense's entry. Linking it to
- * another entry means unlinking it first.
+ * be linked. A linked form can change to another sense of the linked sense's entry. It can also
+ * change to a sense of another entry that a search by `form` turns up. Either way the link is
+ * replaced in one edit, so the analysis never passes through its unlinked state.
  */
 export default function CatalogSenseControl({
   form,
@@ -487,15 +521,16 @@ export default function CatalogSenseControl({
   const menuRef = useRef<HTMLDivElement>(null);
 
   const linked = senseRef !== undefined;
-  const canLink = !readOnly && !linked && search !== undefined && form !== '';
+  const canSearch = !readOnly && search !== undefined && form !== '';
+  const canLink = canSearch && !linked;
   const canChange = !readOnly && link.senseFound;
   const canUnlink = !readOnly && linked && link.lexiconAnswered;
   const canAdopt =
     !readOnly && linked && link.senseGloss !== '' && (link.fromLexicon || link.differs);
 
-  const findToLink = useMemo(
-    () => (canLink && search ? () => search(form) : undefined),
-    [canLink, search, form],
+  const findByForm = useMemo(
+    () => (canSearch && search ? () => search(form) : undefined),
+    [canSearch, search, form],
   );
   const findToChange = useMemo(
     () => (canChange && senseRef ? () => listEntrySenses(senseRef) : undefined),
@@ -551,7 +586,8 @@ export default function CatalogSenseControl({
               canAdopt={canAdopt}
               canPick={canLink || canChange}
               canUnlink={canUnlink}
-              find={linked ? findToChange : findToLink}
+              find={linked ? findToChange : findByForm}
+              findOther={canChange ? findByForm : undefined}
               link={link}
               localizedStrings={localizedStrings}
               senseRef={senseRef}

@@ -38,7 +38,7 @@ const SENSES: Record<string, ResolvedSense> = {
 function candidate(senseId: string, overrides: Partial<SenseCandidate> = {}): SenseCandidate {
   return {
     gloss: { en: senseId },
-    entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: `e-${senseId}` },
+    entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: 'e-1' },
     senseRef: testSenseRef(senseId),
     ...overrides,
   };
@@ -435,6 +435,76 @@ describe('CatalogSenseControl', () => {
       await user.click(screen.getByTestId('catalog-sense-control'));
 
       expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeInTheDocument();
+    });
+  });
+
+  describe('linking a linked form to another entry', () => {
+    /** A sense of an entry other than the linked sense's. */
+    const elsewhere = candidate('s-9', {
+      entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: 'e-9' },
+    });
+
+    it('searches by form only once the action is chosen', async () => {
+      const { searchByForm, user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: jest.fn(async () => [elsewhere]) },
+      );
+      await openPopover(user);
+      await settle();
+      expect(searchByForm).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: 'senseOtherEntryAction' }));
+
+      expect(await screen.findByTestId('catalog-sense-candidate')).toHaveTextContent('s-9');
+      expect(searchByForm).toHaveBeenCalledWith('agua');
+    });
+
+    it('links the picked sense in place of the old one, without unlinking', async () => {
+      const { onLink, onUnlink, user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: async () => [elsewhere] },
+      );
+      await openPopover(user);
+      await user.click(await screen.findByRole('button', { name: 'senseOtherEntryAction' }));
+
+      await user.click(await screen.findByTestId('catalog-sense-candidate'));
+
+      expect(onLink).toHaveBeenCalledTimes(1);
+      expect(onLink).toHaveBeenCalledWith(elsewhere);
+      expect(onUnlink).not.toHaveBeenCalled();
+    });
+
+    it('searches again each time the list is opened', async () => {
+      const searchByForm = jest
+        .fn<Promise<SenseCandidate[]>, [string]>()
+        .mockRejectedValueOnce(new Error('down'))
+        .mockResolvedValue([elsewhere]);
+      const { user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm },
+      );
+      await openPopover(user);
+      await user.click(await screen.findByRole('button', { name: 'senseOtherEntryAction' }));
+      await screen.findByTestId('catalog-sense-search-failed');
+
+      await user.click(screen.getByRole('button', { name: 'senseBack' }));
+      await user.click(screen.getByRole('button', { name: 'senseOtherEntryAction' }));
+
+      expect(await screen.findByTestId('catalog-sense-candidate')).toHaveTextContent('s-9');
+      expect(searchByForm).toHaveBeenCalledTimes(2);
+    });
+
+    it('is not offered when the lexicon cannot search', async () => {
+      const { user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { canSearch: false },
+      );
+      await openPopover(user);
+
+      expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'senseOtherEntryAction' }),
+      ).not.toBeInTheDocument();
     });
   });
 

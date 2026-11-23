@@ -767,7 +767,7 @@ export default function SegmentListView({
                     {seg.heading && bookIndex > 0 && (
                       <div
                         aria-hidden="true"
-                        className="tw:my-[-5px] tw:h-0.5 tw:w-full tw:flex-none tw:bg-muted-foreground/60"
+                        className="tw:-my-1.25 tw:h-0.5 tw:w-full tw:flex-none tw:bg-muted-foreground/60"
                         data-testid="heading-divider"
                       />
                     )}

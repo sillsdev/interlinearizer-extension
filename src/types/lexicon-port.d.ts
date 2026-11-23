@@ -148,6 +148,14 @@ declare module 'interlinearizer/lexicon' {
     resolveSense: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
 
     /**
+     * Lists every sense of the entry owning the sense named by `ref`, that sense included. The ref
+     * is validated as {@link resolveSense} validates one.
+     *
+     * @returns The entry's senses, or `undefined` when the lexicon has no such sense.
+     */
+    listEntrySenses: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
+
+    /**
      * Finds the senses a surface form could be glossed by. How closely a candidate has to match the
      * form, and in what order candidates come back, is the lexicon's to decide.
      *

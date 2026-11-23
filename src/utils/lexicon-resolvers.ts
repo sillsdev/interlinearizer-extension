@@ -4,6 +4,7 @@ import type {
   LexiconProvider,
   LexiconResolver,
   ResolvedSense,
+  SenseCandidate,
 } from 'interlinearizer/lexicon';
 
 /**
@@ -37,6 +38,14 @@ export type LexiconRegistry = {
   resolveSense: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
 
   /**
+   * Lists every sense of the entry owning the sense named by `ref`, through the lexicon whose
+   * authority minted `ref`.
+   *
+   * @returns The senses, or `undefined` when the ref is foreign or its lexicon has no such sense.
+   */
+  listEntrySenses: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
+
+  /**
    * Opens the way to choose a lexicon for this project, or `undefined` where there is none to
    * offer: no lexicon software that can be reached offers one, or every one that does has already
    * linked this project or has not yet reported whether it has.
@@ -68,6 +77,7 @@ export function createLexiconRegistry(
     isForeign: (ref) => !resolversByAuthority.has(ref.authority),
     resolverWith: (capability) => resolvers.find((resolver) => resolver.capabilities[capability]),
     resolveSense: async (ref) => resolversByAuthority.get(ref.authority)?.resolveSense(ref),
+    listEntrySenses: async (ref) => resolversByAuthority.get(ref.authority)?.listEntrySenses(ref),
     openChooser,
   };
 }

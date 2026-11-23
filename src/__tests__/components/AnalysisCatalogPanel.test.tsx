@@ -11,6 +11,7 @@ import type {
   AssignmentStatus,
   Book,
   MorphemeAnalysis,
+  SenseRef,
   TextAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
@@ -173,6 +174,8 @@ type PanelOptions = Partial<{
   senses: Record<string, ResolvedSense>;
   /** Searches the connected lexicon for the senses of a form. Omitted, the lexicon cannot search. */
   search: (form: string) => Promise<SenseCandidate[]>;
+  /** Lists the senses of a linked sense's entry. Omitted, the lexicon lists none. */
+  listEntrySenses: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
@@ -262,7 +265,9 @@ function renderPanel(overrides: PanelOptions = {}) {
   // the same tree.
   return renderOver(
     overrides.analysis,
-    overrides.senses ? withLexicon(panel, overrides.senses, overrides.search).ui : panel,
+    overrides.senses
+      ? withLexicon(panel, overrides.senses, overrides.search, overrides.listEntrySenses).ui
+      : panel,
     overrides.text,
     overrides.book,
   );
@@ -4033,7 +4038,7 @@ describe('AnalysisCatalogPanel', () => {
       await renderPanel({
         analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
         senses: SENSES,
-        search,
+        listEntrySenses: async () => [candidate('s-new')],
       });
 
       await chooseAction(rowFor('ta-1'), 'senseChangeAction');

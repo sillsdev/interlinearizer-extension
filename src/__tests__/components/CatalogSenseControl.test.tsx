@@ -66,19 +66,22 @@ async function settle() {
 
 /**
  * Renders the control beside a lexicon holding {@link SENSES}. The lexicon can search unless
- * `lexicon` says otherwise, and answers searches with `searchByForm`.
+ * `lexicon` says otherwise, answers searches with `searchByForm`, and lists an entry's senses with
+ * `listEntrySenses`.
  */
 function renderControl(
   props: Partial<ComponentProps<typeof CatalogSenseControl>> = {},
   lexicon: {
     canSearch?: boolean;
     searchByForm?: (form: string) => Promise<SenseCandidate[]>;
+    listEntrySenses?: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
     resolveSense?: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
   } = {},
 ) {
   const {
     canSearch = true,
     searchByForm = jest.fn(async () => [candidate('s-1')]),
+    listEntrySenses = jest.fn(async () => [candidate('s-1')]),
     resolveSense = jest.fn(async ({ senseId }: SenseRef) => SENSES[senseId]),
   } = lexicon;
   const registry = createLexiconRegistry([
@@ -88,6 +91,7 @@ function renderControl(
       capabilities: { ...nullLexiconResolver.capabilities, search: canSearch },
       resolveSense,
       searchByForm,
+      listEntrySenses,
     },
   ]);
   const handlers = { onLink: jest.fn(), onUnlink: jest.fn(), onAdopt: jest.fn() };
@@ -110,7 +114,7 @@ function renderControl(
   const view = render(tree(props));
   const rerenderWith = (next: Partial<ComponentProps<typeof CatalogSenseControl>>) =>
     view.rerender(tree({ ...props, ...next }));
-  return { ...view, ...handlers, user, searchByForm, resolveSense, rerenderWith };
+  return { ...view, ...handlers, user, searchByForm, listEntrySenses, resolveSense, rerenderWith };
 }
 
 /** Opens the control's popover as `user`. */
@@ -170,17 +174,17 @@ describe('CatalogSenseControl', () => {
       expect(screen.getByTestId('book-alert-icon')).toBeInTheDocument();
     });
 
-    it('shows a link no connected lexicon answers for as a mark where none can search', async () => {
-      renderControl({ senseRef: { authority: 'elsewhere', senseId: 's-1' } }, { canSearch: false });
+    it('shows a link no connected lexicon answers for as a mark', async () => {
+      renderControl({ senseRef: { authority: 'elsewhere', senseId: 's-1' } });
 
       expect(await screen.findByTestId('catalog-sense-link')).toBeInTheDocument();
       expect(screen.queryByRole('button')).not.toBeInTheDocument();
     });
 
-    it('shows a linked sense with nothing to do as a mark', async () => {
+    it('shows a link whose look-up failed as a mark', async () => {
       renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { canSearch: false, resolveSense: jest.fn().mockRejectedValue(new Error('down')) },
+        { resolveSense: jest.fn().mockRejectedValue(new Error('down')) },
       );
 
       await settle();
@@ -297,68 +301,67 @@ describe('CatalogSenseControl', () => {
       expect(await screen.findByRole('button', { name: 'senseUnlink' })).toBeInTheDocument();
     });
 
-    it('offers no unlink while the sense is being looked up', async () => {
+    it('shows a mark while the sense is being looked up, and offers its actions once it arrives', async () => {
       const pending = deferred<ResolvedSense | undefined>();
       const { user } = renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
         { resolveSense: () => pending.promise },
       );
-      await openPopover(user);
 
-      expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseUnlink' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('catalog-sense-link')).toBeInTheDocument();
       await act(async () => pending.resolve(SENSES['s-1']));
-      expect(await screen.findByRole('button', { name: 'senseUnlink' })).toBeInTheDocument();
-    });
-
-    it('offers no unlink after the look-up failed', async () => {
-      const { user } = renderControl(
-        { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { resolveSense: jest.fn().mockRejectedValue(new Error('down')) },
-      );
-      await settle();
       await openPopover(user);
-
       expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseUnlink' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'senseUnlink' })).toBeInTheDocument();
     });
 
-    it('offers a link with no form to unlink and to adopt, but not to link or change', async () => {
+    it('offers a link with no form a change of sense', async () => {
       const { user } = renderControl({ form: '', senseRef: testSenseRef('s-1') });
       await openPopover(user);
 
-      expect(await screen.findByRole('button', { name: 'senseAdoptGloss' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'senseUnlink' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseLinkAction' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseChangeAction' })).not.toBeInTheDocument();
-    });
-
-    it('offers a change of sense but no unlink for a link no connected lexicon answers for', async () => {
-      const { user } = renderControl({ senseRef: { authority: 'elsewhere', senseId: 's-1' } });
-      await openPopover(user);
-
       expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseUnlink' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'senseLinkAction' })).not.toBeInTheDocument();
     });
 
-    it('offers no change of sense where no lexicon can search', async () => {
+    it('offers a change of sense where no lexicon can search', async () => {
       const { user } = renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
         { canSearch: false },
       );
       await openPopover(user);
 
+      expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeInTheDocument();
+    });
+
+    it('offers no change of sense for a sense the lexicon no longer has', async () => {
+      const { user } = renderControl({ gloss: 'water', senseRef: testSenseRef('gone') });
+      await openPopover(user);
+
       expect(await screen.findByRole('button', { name: 'senseUnlink' })).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'senseChangeAction' })).not.toBeInTheDocument();
     });
 
-    it('disables the change of sense, saying why, when the search finds only the linked sense', async () => {
-      const { user } = renderControl({ gloss: 'water', senseRef: testSenseRef('s-1') });
+    it('disables the change of sense, saying why, when the entry has no other sense', async () => {
+      const { user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { listEntrySenses: async () => [candidate('s-1')] },
+      );
       await openPopover(user);
       await settle();
 
       expect(screen.getByRole('button', { name: 'senseChangeAction' })).toBeDisabled();
       expect(screen.getByRole('group', { name: 'senseNoOther' })).toBeInTheDocument();
+    });
+
+    it('disables the change of sense when the lexicon lists no entry for the sense', async () => {
+      const { user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { listEntrySenses: async () => undefined },
+      );
+      await openPopover(user);
+      await settle();
+
+      expect(screen.getByRole('button', { name: 'senseChangeAction' })).toBeDisabled();
     });
 
     it('focuses the menu rather than its first action on opening', async () => {
@@ -369,10 +372,10 @@ describe('CatalogSenseControl', () => {
       expect(screen.getByTestId('catalog-sense-menu')).toHaveFocus();
     });
 
-    it('offers the change of sense when the search finds another sense', async () => {
+    it('offers the change of sense when the entry has another sense', async () => {
       const { user } = renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { searchByForm: async () => [candidate('s-1'), candidate('s-2')] },
+        { listEntrySenses: async () => [candidate('s-1'), candidate('s-2')] },
       );
       await openPopover(user);
       await settle();
@@ -381,11 +384,11 @@ describe('CatalogSenseControl', () => {
       expect(screen.queryByRole('group', { name: 'senseNoOther' })).not.toBeInTheDocument();
     });
 
-    it('offers the change of sense while the search is out', async () => {
+    it('offers the change of sense while the entry’s senses are being listed', async () => {
       const pending = deferred<SenseCandidate[]>();
       const { user } = renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { searchByForm: () => pending.promise },
+        { listEntrySenses: () => pending.promise },
       );
       await openPopover(user);
 
@@ -393,21 +396,10 @@ describe('CatalogSenseControl', () => {
       await act(async () => pending.resolve([]));
     });
 
-    it('offers the change of sense when the search finds nothing', async () => {
-      const { user } = renderControl(
+    it('lists the linked sense’s entry once, as the menu opens, rather than searching by form', async () => {
+      const { listEntrySenses, searchByForm, user } = renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { searchByForm: async () => [] },
-      );
-      await openPopover(user);
-      await settle();
-
-      expect(screen.getByRole('button', { name: 'senseChangeAction' })).toBeEnabled();
-    });
-
-    it('lists the senses the opening search found without searching again', async () => {
-      const { searchByForm, user } = renderControl(
-        { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { searchByForm: jest.fn(async () => [candidate('s-1'), candidate('s-2')]) },
+        { listEntrySenses: jest.fn(async () => [candidate('s-1'), candidate('s-2')]) },
       );
       await openPopover(user);
       await settle();
@@ -415,13 +407,28 @@ describe('CatalogSenseControl', () => {
       await user.click(screen.getByRole('button', { name: 'senseChangeAction' }));
 
       expect(screen.getAllByTestId('catalog-sense-candidate')).toHaveLength(2);
-      expect(searchByForm).toHaveBeenCalledTimes(1);
+      expect(listEntrySenses).toHaveBeenCalledTimes(1);
+      expect(listEntrySenses).toHaveBeenCalledWith(testSenseRef('s-1'));
+      expect(searchByForm).not.toHaveBeenCalled();
+    });
+
+    it('says so when the entry’s senses cannot be listed', async () => {
+      const { user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { listEntrySenses: jest.fn().mockRejectedValue(new Error('down')) },
+      );
+      await openPopover(user);
+      await settle();
+
+      await user.click(screen.getByRole('button', { name: 'senseChangeAction' }));
+
+      expect(await screen.findByTestId('catalog-sense-search-failed')).toBeInTheDocument();
     });
 
     it('returns to the menu when the popover closes and opens again', async () => {
       const { user } = renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { searchByForm: async () => [candidate('s-1'), candidate('s-2')] },
+        { listEntrySenses: async () => [candidate('s-1'), candidate('s-2')] },
       );
       await openPopover(user);
       await user.click(await screen.findByRole('button', { name: 'senseChangeAction' }));
@@ -597,7 +604,7 @@ describe('CatalogSenseControl', () => {
     it('marks the sense the form links to now, and no other', async () => {
       const { user } = renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { searchByForm: async () => [candidate('s-1'), candidate('s-2')] },
+        { listEntrySenses: async () => [candidate('s-1'), candidate('s-2')] },
       );
       await openPopover(user);
 
@@ -613,7 +620,7 @@ describe('CatalogSenseControl', () => {
     it('does not mark a sense of the same id in another lexicon project', async () => {
       const { user } = renderControl(
         { senseRef: { ...testSenseRef('s-1'), projectId: 'p-1' } },
-        { searchByForm: async () => [candidate('s-1')] },
+        { listEntrySenses: async () => [candidate('s-1')] },
       );
       await openPopover(user);
 

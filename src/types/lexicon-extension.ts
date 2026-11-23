@@ -14,6 +14,10 @@ export type LexiconMultiString = Record<string, string>;
 /** One sense of a lexicon entry, narrowed to what a gloss is resolved from. */
 export interface LexiconSense {
   id: string;
+
+  /** Names the entry the sense belongs to. */
+  entryId: string;
+
   gloss: LexiconMultiString;
 }
 
@@ -59,6 +63,9 @@ export interface LexiconEntryService {
    *   holds no match.
    */
   getEntries(lexiconCode: string, query: LexiconEntryQuery): Promise<LexiconEntry[] | undefined>;
+
+  /** @returns The entry, or `undefined` when neither it nor its lexicon is there. */
+  getEntry(lexiconCode: string, id: string): Promise<LexiconEntry | undefined>;
 
   /** @returns The sense, or `undefined` when neither it nor its lexicon is there. */
   getSense(lexiconCode: string, id: string): Promise<LexiconSense | undefined>;

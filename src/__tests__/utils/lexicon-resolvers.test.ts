@@ -6,6 +6,7 @@ import type {
   LexiconProvider,
   LexiconResolver,
   ResolvedSense,
+  SenseCandidate,
 } from 'interlinearizer/lexicon';
 import { connectLexiconRegistry, createLexiconRegistry } from '../../utils/lexicon-resolvers';
 import { nullLexiconResolver } from '../test-helpers';
@@ -19,6 +20,14 @@ const NO_CAPABILITIES: LexiconCapabilities = {
 
 const SENSE: ResolvedSense = { gloss: { en: 'water' } };
 
+const ENTRY_SENSES: SenseCandidate[] = [
+  {
+    ...SENSE,
+    entryRef: { authority: 'mine', entryId: 'e-1' },
+    senseRef: { authority: 'mine', senseId: 's-1' },
+  },
+];
+
 /** A lexicon whose every call is observable, so a test can assert what did and did not reach it. */
 function stubResolver(
   authorities: readonly string[],
@@ -28,6 +37,7 @@ function stubResolver(
     authorities,
     capabilities,
     resolveSense: jest.fn(async () => SENSE),
+    listEntrySenses: jest.fn(async () => ENTRY_SENSES),
     searchByForm: jest.fn(async () => []),
     createEntry: jest.fn(async () => {
       throw new Error('unused');
@@ -56,6 +66,24 @@ describe('createLexiconRegistry', () => {
 
     await expect(registry.resolveSense(senseRef('unregistered'))).resolves.toBeUndefined();
     expect(mine.resolveSense).not.toHaveBeenCalled();
+  });
+
+  it('lists an entry’s senses through the lexicon whose authority minted the ref', async () => {
+    const mine = stubResolver(['mine']);
+    const other = stubResolver(['other']);
+    const registry = createLexiconRegistry([mine, other]);
+
+    await expect(registry.listEntrySenses(senseRef('mine'))).resolves.toBe(ENTRY_SENSES);
+    expect(mine.listEntrySenses).toHaveBeenCalledWith(senseRef('mine'));
+    expect(other.listEntrySenses).not.toHaveBeenCalled();
+  });
+
+  it('lists no senses for a foreign ref, and hands it to no lexicon', async () => {
+    const mine = stubResolver(['mine']);
+    const registry = createLexiconRegistry([mine]);
+
+    await expect(registry.listEntrySenses(senseRef('unregistered'))).resolves.toBeUndefined();
+    expect(mine.listEntrySenses).not.toHaveBeenCalled();
   });
 
   it('calls a ref foreign when no connected lexicon declares its authority', () => {

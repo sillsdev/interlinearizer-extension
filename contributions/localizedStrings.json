@@ -137,7 +137,7 @@
       "%interlinearizer_analysisCatalog_senseAddLink%": "Link to a lexicon sense",
       "%interlinearizer_analysisCatalog_senseLinkAction%": "Link to a lexicon sense…",
       "%interlinearizer_analysisCatalog_senseChangeAction%": "Change sense…",
-      "%interlinearizer_analysisCatalog_senseNoOther%": "The lexicon has no other sense for this form",
+      "%interlinearizer_analysisCatalog_senseNoOther%": "This entry has no other sense",
       "%interlinearizer_analysisCatalog_senseAdoptGloss%": "Use the lexicon's gloss",
       "%interlinearizer_analysisCatalog_senseUnlink%": "Unlink",
       "%interlinearizer_analysisCatalog_senseLexiconGloss%": "Lexicon gloss: {gloss}",

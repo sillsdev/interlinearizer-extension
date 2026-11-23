@@ -101,13 +101,15 @@ export function testSenseRef(senseId: string): SenseRef {
 
 /**
  * One connected lexicon holding `senses`, keyed by sense id. A ref naming any other authority is
- * foreign to it. The lexicon can search when `searchByForm` is given, and cannot otherwise.
+ * foreign to it. The lexicon can search when `searchByForm` is given, and cannot otherwise. It
+ * lists an entry's senses through `listEntrySenses`, and lists none when that is omitted.
  *
  * @returns The registry, and the lexicon's sense look-up so a test can see what was asked.
  */
 export function stubLexiconRegistry(
   senses?: Record<string, ResolvedSense>,
   searchByForm?: (form: string) => Promise<SenseCandidate[]>,
+  listEntrySenses?: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>,
 ) {
   const resolveSense = jest.fn(async ({ senseId }: SenseRef) => senses?.[senseId]);
   const registry = createLexiconRegistry([
@@ -117,6 +119,7 @@ export function stubLexiconRegistry(
       capabilities: { ...nullLexiconResolver.capabilities, search: searchByForm !== undefined },
       resolveSense,
       ...(searchByForm && { searchByForm }),
+      ...(listEntrySenses && { listEntrySenses }),
     },
   ]);
   return { registry, resolveSense };
@@ -132,8 +135,9 @@ export function withLexicon(
   children: ReactNode,
   senses?: Record<string, ResolvedSense>,
   searchByForm?: (form: string) => Promise<SenseCandidate[]>,
+  listEntrySenses?: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>,
 ) {
-  const { registry, resolveSense } = stubLexiconRegistry(senses, searchByForm);
+  const { registry, resolveSense } = stubLexiconRegistry(senses, searchByForm, listEntrySenses);
   return {
     ui: <LexiconSensesProvider registry={registry}>{children}</LexiconSensesProvider>,
     resolveSense,

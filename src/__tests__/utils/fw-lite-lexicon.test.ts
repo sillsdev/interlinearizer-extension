@@ -2,7 +2,7 @@
 
 import papi, { logger } from '@papi/frontend';
 import type { EntryRef, SenseRef } from 'interlinearizer';
-import type { LexiconEntry } from '../../types/lexicon-extension';
+import type { LexiconEntry, LexiconSense } from '../../types/lexicon-extension';
 import { fwLiteLexiconProvider, resetEntryServiceForTesting } from '../../utils/fw-lite-lexicon';
 import { FW_LITE_AUTHORITY } from '../../utils/lexicon-authorities';
 import {
@@ -27,11 +27,12 @@ const mockSendCommand = getMockedSendCommand(papi);
  * object.
  */
 function stubService(
-  overrides: Partial<Record<'getSense' | 'getEntries' | 'addEntry', jest.Mock>>,
+  overrides: Partial<Record<'getSense' | 'getEntry' | 'getEntries' | 'addEntry', jest.Mock>>,
 ) {
   const handlers: (() => void)[] = [];
   return {
     getSense: jest.fn(async () => undefined),
+    getEntry: jest.fn(async () => undefined),
     getEntries: jest.fn(async () => undefined),
     addEntry: jest.fn(async () => undefined),
     onDidDispose: jest.fn((handler: () => void) => {
@@ -54,11 +55,14 @@ function serveNothing() {
   mockWaitForNetworkObject.mockRejectedValue(new Error('timed out'));
 }
 
+/** Sense `s-1` of entry `e-1`. */
+const WATER_SENSE: LexiconSense = { id: 's-1', entryId: 'e-1', gloss: { en: 'water' } };
+
 function entry(overrides?: Partial<LexiconEntry>): LexiconEntry {
   return {
     id: 'e-1',
     lexemeForm: { hbo: 'mayim' },
-    senses: [{ id: 's-1', gloss: { en: 'water' } }],
+    senses: [WATER_SENSE],
     ...overrides,
   };
 }
@@ -298,7 +302,7 @@ describe('fwLiteLexiconProvider', () => {
     describe('resolveSense', () => {
       it('resolves a sense of the connected lexicon to its gloss', async () => {
         const service = stubService({
-          getSense: jest.fn(async () => ({ id: 's-1', gloss: { en: 'water' } })),
+          getSense: jest.fn(async () => WATER_SENSE),
         });
         serve(service);
 
@@ -345,20 +349,101 @@ describe('fwLiteLexiconProvider', () => {
       });
     });
 
+    describe('listEntrySenses', () => {
+      it('names every sense of the entry the sense belongs to', async () => {
+        const service = stubService({
+          getSense: jest.fn(async () => WATER_SENSE),
+          getEntry: jest.fn(async () =>
+            entry({
+              senses: [WATER_SENSE, { id: 's-2', entryId: 'e-1', gloss: { en: 'waters' } }],
+            }),
+          ),
+        });
+        serve(service);
+
+        const senses = await fwLiteLexiconProvider
+          .connect(LEXICON)
+          .listEntrySenses(senseRef(LEXICON));
+
+        expect(service.getEntry).toHaveBeenCalledWith(LEXICON, 'e-1');
+        expect(senses).toEqual([
+          {
+            gloss: { en: 'water' },
+            lexemeForm: { hbo: 'mayim' },
+            entryRef: entryRef(LEXICON),
+            senseRef: senseRef(LEXICON),
+          },
+          {
+            gloss: { en: 'waters' },
+            lexemeForm: { hbo: 'mayim' },
+            entryRef: entryRef(LEXICON),
+            senseRef: { ...senseRef(LEXICON), senseId: 's-2' },
+          },
+        ]);
+      });
+
+      it('misses a ref naming another lexicon, and never asks that lexicon for it', async () => {
+        const service = stubService({});
+        serve(service);
+
+        await expect(
+          fwLiteLexiconProvider.connect(LEXICON).listEntrySenses(senseRef('other-lexicon')),
+        ).resolves.toBeUndefined();
+        expect(service.getSense).not.toHaveBeenCalled();
+      });
+
+      it('misses with no lexicon connected', async () => {
+        const service = stubService({});
+        serve(service);
+
+        await expect(
+          fwLiteLexiconProvider.connect().listEntrySenses(senseRef(LEXICON)),
+        ).resolves.toBeUndefined();
+        expect(service.getSense).not.toHaveBeenCalled();
+      });
+
+      it('misses a sense the lexicon does not have, and asks for no entry', async () => {
+        const service = stubService({});
+        serve(service);
+
+        await expect(
+          fwLiteLexiconProvider.connect(LEXICON).listEntrySenses(senseRef(LEXICON)),
+        ).resolves.toBeUndefined();
+        expect(service.getEntry).not.toHaveBeenCalled();
+      });
+
+      it('misses a sense whose entry the lexicon no longer has', async () => {
+        serve(
+          stubService({
+            getSense: jest.fn(async () => WATER_SENSE),
+          }),
+        );
+
+        await expect(
+          fwLiteLexiconProvider.connect(LEXICON).listEntrySenses(senseRef(LEXICON)),
+        ).resolves.toBeUndefined();
+      });
+
+      it('misses while the lexicon is unreachable', async () => {
+        serveNothing();
+
+        await expect(
+          fwLiteLexiconProvider.connect(LEXICON).listEntrySenses(senseRef(LEXICON)),
+        ).resolves.toBeUndefined();
+      });
+    });
+
     describe('searchByForm', () => {
       it('names every sense of every matching entry, alongside the form it is listed under', async () => {
         const service = stubService({
           getEntries: jest.fn(async () => [
             entry({
-              senses: [
-                { id: 's-1', gloss: { en: 'water' } },
-                { id: 's-2', gloss: { en: 'waters' } },
-              ],
+              senses: [WATER_SENSE, { id: 's-2', entryId: 'e-1', gloss: { en: 'waters' } }],
             }),
             entry({
               id: 'e-2',
               lexemeForm: { hbo: 'mayim2' },
-              senses: [{ id: 's-3', gloss: { en: 'sea' } }],
+              senses: [{ id: 's-3', entryId: 'e-2', gloss: { en: 'sea' } }],
             }),
           ]),
         });

@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import {
   LexiconSensesProvider,
   useDisplayedGloss,
+  useEntrySenses,
   useLexiconSearch,
   useLinkedGloss,
 } from '../../components/LexiconSenses';
@@ -171,6 +172,7 @@ describe('useLinkedGloss', () => {
       senseGloss: '',
       differs: false,
       lexiconAnswered: false,
+      senseFound: false,
     });
     expect(resolveSense).not.toHaveBeenCalled();
   });
@@ -186,6 +188,20 @@ describe('useLinkedGloss', () => {
     const { result } = renderLinkedGloss('', testSenseRef('gone'));
 
     await waitFor(() => expect(result.current.lexiconAnswered).toBe(true));
+  });
+
+  it('reports the sense found once the lexicon has it', async () => {
+    const { result } = renderLinkedGloss('', testSenseRef('s-1'));
+
+    expect(result.current.senseFound).toBe(false);
+    await waitFor(() => expect(result.current.senseFound).toBe(true));
+  });
+
+  it('reports no sense found when the lexicon has no such sense', async () => {
+    const { result } = renderLinkedGloss('', testSenseRef('gone'));
+
+    await waitFor(() => expect(result.current.lexiconAnswered).toBe(true));
+    expect(result.current.senseFound).toBe(false);
   });
 
   it('reports no answer for a foreign link', async () => {
@@ -280,5 +296,35 @@ describe('useLexiconSearch', () => {
     rerender();
 
     expect(result.current).toBe(first);
+  });
+});
+
+describe('useEntrySenses', () => {
+  it('lists no senses outside any lexicon', async () => {
+    const { result } = renderHook(() => useEntrySenses());
+
+    await expect(result.current(testSenseRef('s-1'))).resolves.toBeUndefined();
+  });
+
+  it('lists the senses through the lexicon that minted the ref', async () => {
+    const senses = [
+      {
+        gloss: { en: 'water' },
+        entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: 'e-1' },
+        senseRef: testSenseRef('s-1'),
+      },
+    ];
+    const listEntrySenses = jest.fn(async () => senses);
+    const registry = createLexiconRegistry([
+      { ...nullLexiconResolver, authorities: [TEST_LEXICON_AUTHORITY], listEntrySenses },
+    ]);
+    const { result } = renderHook(() => useEntrySenses(), {
+      wrapper: ({ children }: Readonly<{ children: ReactNode }>) => (
+        <LexiconSensesProvider registry={registry}>{children}</LexiconSensesProvider>
+      ),
+    });
+
+    await expect(result.current(testSenseRef('s-1'))).resolves.toBe(senses);
+    expect(listEntrySenses).toHaveBeenCalledWith(testSenseRef('s-1'));
   });
 });

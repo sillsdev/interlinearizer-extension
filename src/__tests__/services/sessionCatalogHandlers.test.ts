@@ -354,5 +354,35 @@ describe('a session not open', () => {
     ).rejects.toThrow();
 
     expect(logger.error).toHaveBeenCalledTimes(6);
+    expect(logger.error).toHaveBeenNthCalledWith(
+      1,
+      'Interlinearizer: failed to serve the catalog in session no-such-session',
+      expect.any(Error),
+    );
+    expect(logger.error).toHaveBeenNthCalledWith(
+      2,
+      'Interlinearizer: failed to count usages in session no-such-session',
+      expect.any(Error),
+    );
+    expect(logger.error).toHaveBeenNthCalledWith(
+      3,
+      'Interlinearizer: failed to serve catalog rows in session no-such-session',
+      expect.any(Error),
+    );
+    expect(logger.error).toHaveBeenNthCalledWith(
+      4,
+      'Interlinearizer: failed to serve homographs in session no-such-session',
+      expect.any(Error),
+    );
+    expect(logger.error).toHaveBeenNthCalledWith(
+      5,
+      'Interlinearizer: failed to summarize a selection in session no-such-session',
+      expect.any(Error),
+    );
+    expect(logger.error).toHaveBeenNthCalledWith(
+      6,
+      'Interlinearizer: failed to preview a deletion in session no-such-session',
+      expect.any(Error),
+    );
   });
 });

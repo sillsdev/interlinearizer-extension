@@ -232,15 +232,25 @@ describe('sessionEditHandlers', () => {
       { analysisLanguages: ['es'], retag: { from: 'en', to: 'es' }, deleteTextOf: 'fr' },
       'either moves text or deletes it',
     ],
-  ])('refuses and logs a change of languages with %s', async (_case, args, message) => {
-    const { edits, sessionId, host } = await handlersOver();
+  ])('refuses a change of languages with %s', async (_case, args, message) => {
+    const { edits, sessionId } = await handlersOver();
 
     await expect(
       edits['interlinearizer.changeAnalysisLanguages']({ sessionId, ...args }),
     ).rejects.toThrow(message);
+  });
+
+  it('logs a refused change of languages with the error it rejects with', async () => {
+    const { edits, sessionId, host } = await handlersOver();
+    const change = edits['interlinearizer.changeAnalysisLanguages']({
+      sessionId,
+      analysisLanguages: [],
+    });
+
+    await expect(change).rejects.toThrow('needs an analysis language');
     expect(host.logger.error).toHaveBeenCalledWith(
       `Interlinearizer: failed to changeAnalysisLanguages in session ${sessionId}`,
-      expect.anything(),
+      await change.catch((e: unknown) => e),
     );
   });
 

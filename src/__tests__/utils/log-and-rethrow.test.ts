@@ -36,6 +36,7 @@ describe('logAndRethrow', () => {
       }),
     ).rejects.toBe(error);
 
+    expect(logger.error).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith('Interlinearizer: failed to count', error);
   });
 });

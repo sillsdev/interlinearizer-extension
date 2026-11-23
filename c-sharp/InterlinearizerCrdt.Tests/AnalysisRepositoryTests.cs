@@ -771,6 +771,24 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyRefusesAnUpdateKeepingALinkOnAnAnalysisTheSameChangesDeleteApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(async () => await ApplyNext(new ChangeSet
+        {
+            Intent = "approve and delete",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaBeginning),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested),
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning"))),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
     public async Task ApplyKeepsALinksUpdateWhoseReadAnalysisAnotherCommitMovedItOffAndDeleted()
     {
         await ApplyNext(FullAnalysis());

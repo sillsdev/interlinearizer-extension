@@ -808,6 +808,32 @@ export function describeAnalysisRepositoryConformance(
           expect(unstamped(stored)).toStrictEqual(unstamped({ ...read, pos: 'noun' }));
         });
 
+        it("keeps a link's update whose read analysis another apply moved it off and deleted", async () => {
+          const repository = await overFullDraft();
+          const read = fixture('tokenAnalysisLinks', ID.tlGenBeginning);
+          await repository.apply({
+            intent: 'move',
+            tokenAnalysisLinks: updating({
+              before: read,
+              after: { ...read, analysisId: ID.taUnlinked },
+            }),
+          });
+          await repository.apply({
+            intent: 'delete',
+            tokenAnalyses: deleting([fixture('tokenAnalyses', ID.taBeginning)]),
+          });
+
+          await repository.apply({
+            intent: 'approve',
+            tokenAnalysisLinks: updating({ before: read, after: { ...read, status: 'approved' } }),
+          });
+
+          const { tokenAnalysisLinks } = await repository.findLinksToAnalyses([ID.taUnlinked]);
+          expect(tokenAnalysisLinks.map(unstamped)).toStrictEqual([
+            unstamped({ ...read, analysisId: ID.taUnlinked, status: 'approved' }),
+          ]);
+        });
+
         it('skips an update of a record that is not stored, reporting nothing applied', async () => {
           const repository = await overFullDraft();
           const missing: TokenAnalysis = {
@@ -1046,6 +1072,24 @@ export function describeAnalysisRepositoryConformance(
                 tokenAnalysisLinks: creating([
                   { ...missingAnalysisLink(), analysisId: ID.taUnlinked },
                 ]),
+              }),
+            ).rejects.toThrow();
+
+            await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
+          });
+
+          it('refuses an update keeping a link on an analysis the same changes delete, applying nothing', async () => {
+            const repository = await overFullDraft();
+            const read = fixture('tokenAnalysisLinks', ID.tlGenBeginning);
+
+            await expect(
+              repository.apply({
+                intent: 'approveAndDelete',
+                tokenAnalyses: deleting([fixture('tokenAnalyses', ID.taBeginning)]),
+                tokenAnalysisLinks: updating({
+                  before: read,
+                  after: { ...read, status: 'approved' },
+                }),
               }),
             ).rejects.toThrow();
 

@@ -36,9 +36,10 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// If an id appears more than once in the changes, in one record kind or across kinds; if an
     /// update's before and after name different ids; if a create's id is stored, or is or was stored
     /// as a record of another kind or in another project; if an update's id is stored as another
-    /// kind or in another project; if a create or update names a project other than this one; or if
-    /// a link names an analysis stored in another project, or one that will not be stored once the
-    /// changes apply.
+    /// kind or in another project; if a create or update names a project other than this one; if a
+    /// create or update moves a link onto an analysis stored in another project, or onto one that
+    /// will not be stored once the changes apply; or if an update leaves a stored link on an analysis
+    /// that the changes delete.
     /// Nothing is applied. Harmony keeps every entity in one table, so two records cannot share an
     /// id across kinds or projects, and a create under a deleted record's id brings that record back.
     /// </exception>
@@ -339,14 +340,22 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// Refuses a link naming another project's analysis, which this project's reads could not
     /// resolve and whose deletion would delete the link. Also refuses a link naming an analysis
     /// that the changes neither create nor leave stored; Harmony would create that link already
-    /// deleted.
+    /// deleted. Also refuses an update that keeps a link on an analysis that the changes delete;
+    /// Harmony would delete that link with its analysis.
     /// </summary>
     private async Task AssertLinkedAnalysesStored(IKindChanges[] kinds)
     {
+        var deletes = kinds.SelectMany(k => k.DeleteIds).ToHashSet();
+        foreach (var kept in kinds.SelectMany(k => k.KeptLinks))
+        {
+            if (deletes.Contains(kept.AnalysisId))
+            {
+                throw new ArgumentException($"An update keeps the link {kept.Id} on analysis {kept.AnalysisId}, which the changes delete", nameof(kinds));
+            }
+        }
         var links = kinds.SelectMany(k => k.WrittenLinks).ToList();
         if (links.Count == 0) return;
         var createdAnalyses = kinds.SelectMany(k => k.CreatedAnalysisIds).ToHashSet();
-        var deletes = kinds.SelectMany(k => k.DeleteIds).ToHashSet();
         var analysisIds = links.Select(l => l.AnalysisId).Distinct().ToList();
         var projects = new Dictionary<Guid, Guid>();
         foreach (var analysis in (await StoredInAnyProject<TokenAnalysis>(analysisIds)).Cast<Analysis>()
@@ -359,11 +368,11 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         {
             if (projects.TryGetValue(link.AnalysisId, out var analysisProject) && analysisProject != projectId)
             {
-                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, stored in project {analysisProject}", "changes");
+                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, stored in project {analysisProject}", nameof(kinds));
             }
             if (!createdAnalyses.Contains(link.AnalysisId) && (!projects.ContainsKey(link.AnalysisId) || deletes.Contains(link.AnalysisId)))
             {
-                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, which will not be stored", "changes");
+                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, which will not be stored", nameof(kinds));
             }
         }
     }
@@ -407,6 +416,12 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         /// </summary>
         IEnumerable<AnalysisLink> WrittenLinks { get; }
 
+        /// <summary>
+        /// The stored links of this kind that an update leaves on their analysis, as stored. Empty
+        /// until <see cref="LoadStored"/> has run.
+        /// </summary>
+        IEnumerable<AnalysisLink> KeptLinks { get; }
+
         /// <summary>The ids of the analyses of this kind that the changes create.</summary>
         IEnumerable<Guid> CreatedAnalysisIds { get; }
 
@@ -449,6 +464,12 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
             changes?.Creates.OfType<AnalysisLink>().Concat(changes.Updates
                 .Where(u => u is { Before: AnalysisLink before, After: AnalysisLink after } && before.AnalysisId != after.AnalysisId)
                 .Select(u => u.After).OfType<AnalysisLink>()) ?? [];
+
+        public IEnumerable<AnalysisLink> KeptLinks =>
+            changes?.Updates
+                .Where(u => u is { Before: AnalysisLink before, After: AnalysisLink after } && before.AnalysisId == after.AnalysisId)
+                .Select(u => _stored.GetValueOrDefault(u.After.Id))
+                .OfType<AnalysisLink>() ?? [];
 
         public IEnumerable<Guid> CreatedAnalysisIds => changes?.Creates.OfType<Analysis>().Select(a => a.Id) ?? [];
 

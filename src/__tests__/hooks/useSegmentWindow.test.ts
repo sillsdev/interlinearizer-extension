@@ -1330,7 +1330,7 @@ describe('useSegmentWindow', () => {
     expect(container.scrollTop).toBe(350);
   });
 
-  it('extends both edges when one observer delivery carries both sentinels', () => {
+  it('extends both edges from one delivery carrying both sentinels, holding the first segment still', () => {
     // Anchored mid-book, so both edges have room to grow.
     const book = makeBook(100, 0);
     const { result, container } = renderSegmentWindow(book, {

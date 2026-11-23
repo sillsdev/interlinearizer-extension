@@ -52,15 +52,6 @@ import {
 jest.mock('../../components/TextReadingStatus');
 
 /**
- * The intersection-observer Jest stub exposes a helper for firing intersections on the global
- * object. Declared here so the windowing tests reach it without a type assertion.
- */
-declare global {
-  // eslint-disable-next-line no-var, vars-on-top
-  var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
-}
-
-/**
  * Configures `useSetting` to report the given interface languages, most preferred first, for
  * `platform.interfaceLanguage` — the only setting the panel reads.
  *

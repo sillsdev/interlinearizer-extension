@@ -163,7 +163,7 @@ function applyRecordChanges<T extends { id: string }>(
     if (deleted.has(record.id)) return;
     next.push(replaced.get(record.id) ?? record);
   });
-  next.push(...changes.creates);
+  changes.creates.forEach((record) => next.push(record));
 
   const applied: AppliedRecords<T> = {
     puts: [...replaced.values(), ...changes.creates],

@@ -44,7 +44,7 @@ type Step = {
   changes: ChangeSet;
   /** The step that the edit was recorded as. */
   step?: EditStep;
-  /** How many passes had been recorded when the step was captured, all of which it reflects. */
+  /** How many passes the step reflects: every pass up to this count, and possibly later ones. */
   passesSeen: number;
   /** The state that applying the step leads to. */
   state: number;
@@ -291,7 +291,8 @@ export class EditHistory {
     to.push({
       changes: inverse,
       ...(step.step && { step: step.step }),
-      passesSeen: this.passCount,
+      // The inverse recreates each deleted record as the step read it, before any later pass.
+      passesSeen: step.passesSeen,
       state: this.state,
     });
     this.state = step.state;

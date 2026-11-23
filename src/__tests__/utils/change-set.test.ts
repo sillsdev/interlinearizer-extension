@@ -124,6 +124,14 @@ describe('applyChangeSet', () => {
     expect(applied.tokenAnalyses).toStrictEqual({ puts: [payload('b')], deletes: [] });
   });
 
+  it('creates more records than a function call takes arguments', () => {
+    const many = Array.from({ length: 200_000 }, (_, index) => payload(`t${index}`));
+
+    const { draft } = applyChangeSet(draftOf(), { intent: 'add', tokenAnalyses: creating(many) });
+
+    expect(draft.analysis.tokenAnalyses).toHaveLength(many.length);
+  });
+
   it('updates a stored record in its place', () => {
     const { draft } = applyChangeSet(draftOf(payload('a'), payload('b'), payload('c')), {
       intent: 'edit',

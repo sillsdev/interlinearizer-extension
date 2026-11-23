@@ -1,4 +1,4 @@
-import type { MultiString, SenseRef } from 'interlinearizer';
+import type { EntryRef, MultiString, SenseRef } from 'interlinearizer';
 import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { BookAlert, BookOpen } from 'lucide-react';
 import {
@@ -99,6 +99,33 @@ function sameSense(a: SenseRef | undefined, b: SenseRef): boolean {
     a.projectId === b.projectId &&
     a.senseId === b.senseId
   );
+}
+
+/** Whether two refs name the same entry. */
+function sameEntry(a: EntryRef, b: EntryRef): boolean {
+  return a.authority === b.authority && a.projectId === b.projectId && a.entryId === b.entryId;
+}
+
+/** `outcome` with the senses of `entry` left out, or `outcome` unchanged when `entry` is unknown. */
+function withoutEntry(outcome: SearchOutcome, entry: EntryRef | undefined): SearchOutcome {
+  if (outcome.status !== 'found' || !entry) return outcome;
+  return {
+    status: 'found',
+    candidates: outcome.candidates.filter((candidate) => !sameEntry(candidate.entryRef, entry)),
+  };
+}
+
+/**
+ * Finds the entry of the sense that `senseRef` names, in whichever outcome lists that sense. Gives
+ * `undefined` when no outcome lists it.
+ */
+function entryOf(
+  senseRef: SenseRef | undefined,
+  outcomes: readonly SearchOutcome[],
+): EntryRef | undefined {
+  return outcomes
+    .flatMap((outcome) => (outcome.status === 'found' ? outcome.candidates : []))
+    .find((candidate) => sameSense(senseRef, candidate.senseRef))?.entryRef;
 }
 
 /** A link that offers nothing to do, showing the link's state as a mark. */
@@ -281,7 +308,7 @@ function SearchView({
  *
  * The candidates are fetched as the popover opens. The change of sense is disabled when the linked
  * sense's entry has no other sense. The senses of other entries are searched for each time their
- * list is opened.
+ * list is opened. That list leaves out the linked sense's entry.
  */
 function PopoverBody({
   find,
@@ -345,8 +372,7 @@ function PopoverBody({
       <SearchView
         analysisLanguage={analysisLanguage}
         localizedStrings={localizedStrings}
-        outcome={other.outcome}
-        senseRef={senseRef}
+        outcome={withoutEntry(other.outcome, entryOf(senseRef, [outcome, other.outcome]))}
         onBack={() => setView('menu')}
         onPick={(candidate) => {
           onLink(candidate);

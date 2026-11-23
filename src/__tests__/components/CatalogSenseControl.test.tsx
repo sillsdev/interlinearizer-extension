@@ -474,6 +474,47 @@ describe('CatalogSenseControl', () => {
       expect(onUnlink).not.toHaveBeenCalled();
     });
 
+    it('leaves out the senses of the linked sense’s entry', async () => {
+      const { user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: async () => [candidate('s-2'), elsewhere] },
+      );
+      await openPopover(user);
+      await user.click(await screen.findByRole('button', { name: 'senseOtherEntryAction' }));
+
+      const candidates = await screen.findAllByTestId('catalog-sense-candidate');
+
+      expect(candidates.map((button) => button.textContent)).toEqual(['s-9']);
+    });
+
+    it('says nothing matches when only the linked sense’s entry does', async () => {
+      const { user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: async () => [candidate('s-1'), candidate('s-2')] },
+      );
+      await openPopover(user);
+      await user.click(await screen.findByRole('button', { name: 'senseOtherEntryAction' }));
+
+      expect(await screen.findByTestId('catalog-sense-no-match')).toBeInTheDocument();
+      expect(screen.queryByTestId('catalog-sense-candidate')).not.toBeInTheDocument();
+    });
+
+    it('finds the linked sense’s entry in the search when its senses cannot be listed', async () => {
+      const { user } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        {
+          listEntrySenses: jest.fn().mockRejectedValue(new Error('down')),
+          searchByForm: async () => [candidate('s-1'), elsewhere],
+        },
+      );
+      await openPopover(user);
+      await user.click(await screen.findByRole('button', { name: 'senseOtherEntryAction' }));
+
+      const candidates = await screen.findAllByTestId('catalog-sense-candidate');
+
+      expect(candidates.map((button) => button.textContent)).toEqual(['s-9']);
+    });
+
     it('searches again each time the list is opened', async () => {
       const searchByForm = jest
         .fn<Promise<SenseCandidate[]>, [string]>()

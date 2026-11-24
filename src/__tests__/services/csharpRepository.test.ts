@@ -145,6 +145,18 @@ describe('CSharpRepository', () => {
     });
   });
 
+  it('counts the text in each language over every record the host holds', async () => {
+    const { send, repository } = createRepository();
+    send.mockResolvedValue({
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'a', surfaceText: 'and', gloss: { en: 'and' } }],
+    });
+
+    await expect(repository.countTextByTag()).resolves.toStrictEqual({
+      en: { glosses: 1, freeTranslations: 0 },
+    });
+  });
+
   it('exports every record the host holds in an otherwise empty draft', async () => {
     const { send, repository } = createRepository();
     const analysis = { ...emptyAnalysis(), tokenAnalyses: [{ id: 'a' }] };

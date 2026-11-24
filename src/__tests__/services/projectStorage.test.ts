@@ -2469,6 +2469,7 @@ describe('projectStorage', () => {
         1,
       ],
       ['summarizeTokenAnalyses', (r: AnalysisRepository) => r.summarizeTokenAnalyses(), 1],
+      ['countTextByTag', (r: AnalysisRepository) => r.countTextByTag().then(Object.keys), 1],
       ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
       [
         'getWholeDraft',

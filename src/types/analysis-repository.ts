@@ -10,6 +10,7 @@ import type {
 } from 'interlinearizer';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { normalizeSurfaceForm } from '../utils/analysis-identity';
+import type { TextCountsByTag } from '../utils/text-counts';
 
 /** Text records by key. */
 export interface KeyValueStorage {
@@ -405,6 +406,14 @@ export interface AnalysisRepository {
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.
    */
   summarizeTokenAnalyses(): Promise<readonly TokenAnalysisSummary[]>;
+
+  /**
+   * How much text the analysis holds in each language, leaving out languages with none. Blank text
+   * counts as none.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  countTextByTag(): Promise<TextCountsByTag>;
 
   /**
    * Reports where the derived indexes the repository keeps differ from ones built afresh from its

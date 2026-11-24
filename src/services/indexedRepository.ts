@@ -21,6 +21,7 @@ import { isEmptyDraft } from '../utils/empty-draft';
 import { scopeRecordOf } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { jsonCopy } from '../utils/json-copy';
+import { countTextOfEveryTag, type TextCountsByTag } from '../utils/text-counts';
 import type { AnalysisIndex } from './analysisIndex';
 
 /** An index, with the draft whose records it is kept over. */
@@ -50,6 +51,7 @@ export abstract class IndexedRepository implements Pick<
   | 'findPhraseAnalysesByForm'
   | 'countApprovals'
   | 'summarizeTokenAnalyses'
+  | 'countTextByTag'
   | 'checkIndexes'
 > {
   async getWholeDraft(): Promise<DraftProject> {
@@ -137,6 +139,16 @@ export abstract class IndexedRepository implements Pick<
    */
   async summarizeTokenAnalyses(): Promise<readonly TokenAnalysisSummary[]> {
     return (await this.indexed()).index.summarizeTokenAnalyses();
+  }
+
+  /**
+   * How much text the analysis holds in each language, leaving out languages with none. Blank text
+   * counts as none.
+   *
+   * @throws Whatever loading the stored records throws.
+   */
+  async countTextByTag(): Promise<TextCountsByTag> {
+    return countTextOfEveryTag((await this.indexed()).draft.analysis);
   }
 
   /**

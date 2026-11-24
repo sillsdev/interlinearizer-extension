@@ -1241,6 +1241,24 @@ export function describeAnalysisRepositoryConformance(
           );
         });
 
+        it('counts the text in each language, leaving out blank text', async () => {
+          const repository = await overFullDraft();
+          const [and] = fullAnalysis().tokenAnalyses;
+
+          await repository.apply({
+            intent: 'blankFrench',
+            tokenAnalyses: { puts: [{ ...and, gloss: { en: 'and', fr: '  ' } }], deletes: [] },
+          });
+
+          await expect(repository.countTextByTag()).resolves.toStrictEqual({
+            en: { glosses: 5, freeTranslations: 1 },
+          });
+        });
+
+        it('counts no text in a draft never saved', async () => {
+          await expect((await store.open(SOURCE)).countTextByTag()).resolves.toStrictEqual({});
+        });
+
         it('summarizes nothing in a draft never saved', async () => {
           await expect((await store.open(SOURCE)).summarizeTokenAnalyses()).resolves.toStrictEqual(
             [],

@@ -3860,37 +3860,61 @@ describe('main', () => {
       });
     });
 
-    it("stales the free translation of a segment it splits, in the split's edit", async () => {
-      await seedDraft({
-        segmentAnalyses: [
-          {
-            id: 'sa-1',
-            ...FIXTURE_STAMPS,
-            surfaceText: 'In the beginning God',
-            freeTranslation: { en: 'At first God' },
-          },
-        ],
-        segmentAnalysisLinks: [
-          {
-            id: 'sl-1',
-            analysisId: 'sa-1',
-            ...FIXTURE_STAMPS,
-            status: 'approved',
-            segmentId: 'GEN 1:1',
-          },
-        ],
-      });
-      const { openSession, splitSegment } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+    it.each([
+      [
+        'mergeSegments',
+        (c: SessionCommands, id: string) =>
+          c.mergeSegments({ sessionId: id, secondSegmentStartRef: 'GEN 1:2:0' }),
+        { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+      ],
+      [
+        'splitSegment',
+        (c: SessionCommands, id: string) =>
+          c.splitSegment({ sessionId: id, tokenRef: 'GEN 1:1:3' }),
+        { removedVerseStarts: [], addedStarts: [{ tokenRef: 'GEN 1:1:3' }] },
+      ],
+      [
+        'moveBoundary',
+        (c: SessionCommands, id: string) =>
+          c.moveBoundary({ sessionId: id, fromRef: 'GEN 1:2:0', toRef: 'GEN 1:2:4' }),
+        { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [{ tokenRef: 'GEN 1:2:4' }] },
+      ],
+    ])(
+      "stales the free translation of a segment %s reshapes, in the boundary's edit",
+      async (intent, command, segmentation) => {
+        await seedDraft({
+          segmentAnalyses: [
+            {
+              id: 'sa-1',
+              ...FIXTURE_STAMPS,
+              surfaceText: 'In the beginning',
+              freeTranslation: { en: 'At first' },
+            },
+          ],
+          segmentAnalysisLinks: [
+            {
+              id: 'sl-1',
+              analysisId: 'sa-1',
+              ...FIXTURE_STAMPS,
+              status: 'approved',
+              segmentId: 'GEN 1:1',
+            },
+          ],
+        });
+        const commands = await activateSessionCommands();
+        const { sessionId } = JSON.parse(
+          await commands.openSession({ sourceProjectId: 'src-project' }),
+        );
 
-      const { changes } = JSON.parse(await splitSegment({ sessionId, tokenRef: 'GEN 1:1:3' }));
+        const { changes } = JSON.parse(await command(commands, sessionId));
 
-      expect(changes).toMatchObject({
-        intent: 'splitSegment',
-        segmentAnalysisLinks: { puts: [{ id: 'sl-1', status: 'stale' }] },
-        scope: { segmentation: { addedStarts: [{ tokenRef: 'GEN 1:1:3' }] } },
-      });
-    });
+        expect(changes).toMatchObject({
+          intent,
+          scope: { segmentation },
+          segmentAnalysisLinks: { puts: [{ id: 'sl-1', status: 'stale' }] },
+        });
+      },
+    );
 
     const glossedIn = {
       tokenAnalyses: [

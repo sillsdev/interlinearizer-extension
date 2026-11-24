@@ -504,6 +504,33 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyReportsALinkThatADeletedAnalysisTookWhenAReplayDroppedTheLinksSnapshotOnIt()
+    {
+        await ApplyNext(FullAnalysis());
+        var unrelated = NextDate();
+        var onBeginning = TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        var onUnlinked = TokenLink(TlGenBeginning, TaUnlinked, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        var onAnd = TokenLink(TlGenBeginning, TaAnd, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(onBeginning, onUnlinked)),
+        });
+        var deleteAt = NextDate();
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(onUnlinked, onAnd)),
+        });
+        // Replaying the moves after this commit keeps no snapshot of the link on TaUnlinked.
+        await ApplyAt(unrelated, new ChangeSet { Intent = "deleteLink", TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Delete(TlExoAnd) });
+
+        var reply = await ApplyAt(deleteAt, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenBeginning]);
+    }
+
+    [Test]
     public async Task ApplyReportsEachPutAsStored()
     {
         var reply = await ApplyNext(FullAnalysis());

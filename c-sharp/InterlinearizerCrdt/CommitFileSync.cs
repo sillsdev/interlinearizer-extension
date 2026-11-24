@@ -54,6 +54,7 @@ public partial class CommitFileSync(
     /// If a chunk's missing parts cannot be written to match its stored ones, as when a build that
     /// serializes commits differently wrote the chunk. Nothing more is exported.
     /// </exception>
+    /// <exception cref="DecoderFallbackException">If a stored part of an incomplete chunk is not valid UTF-8. Nothing more is exported.</exception>
     public async Task<int> Export()
     {
         var chunks = (await Chunks()).Where(c => c.ClientId == client.Id).ToList();
@@ -112,6 +113,7 @@ public partial class CommitFileSync(
     /// If a chunk cannot be read, as when a newer build wrote a change type this one does not
     /// know. Nothing is added.
     /// </exception>
+    /// <exception cref="DecoderFallbackException">If a chunk that it reads is not valid UTF-8. Nothing is added.</exception>
     public async Task<int> Import()
     {
         var commits = new List<Commit>();
@@ -234,6 +236,7 @@ public partial class CommitFileSync(
             var match = ChunkFileName().Match(file);
             if (!match.Success
                 || !long.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var utcTicks)
+                || utcTicks > DateTimeOffset.MaxValue.UtcTicks
                 || !long.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var counter))
             {
                 return null;

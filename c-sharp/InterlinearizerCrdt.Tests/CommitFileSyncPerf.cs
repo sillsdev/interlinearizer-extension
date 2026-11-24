@@ -112,7 +112,12 @@ public class CommitFileSyncPerf
 
     private static string Megabytes(long bytes) => (bytes / 1_000_000.0).ToString("F1");
 
-    private static string Median(List<double> values) => values.Order().ElementAt(values.Count / 2).ToString("F0");
+    private static string Median(List<double> values)
+    {
+        var sorted = values.Order().ToList();
+        var middle = sorted.Count / 2;
+        return (sorted.Count % 2 == 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2).ToString("F0");
+    }
 
     private static int Count(TextAnalysis a) => a.SegmentAnalyses.Count + a.SegmentAnalysisLinks.Count + a.TokenAnalyses.Count
         + a.TokenAnalysisLinks.Count + a.PhraseAnalyses.Count + a.PhraseAnalysisLinks.Count;

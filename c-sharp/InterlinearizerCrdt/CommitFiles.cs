@@ -12,6 +12,7 @@ public interface ICommitFiles
     Task<IReadOnlyList<string>> List();
 
     /// <exception cref="IOException">If no file is stored under <paramref name="name"/>.</exception>
+    /// <exception cref="DecoderFallbackException">If the file is not valid UTF-8.</exception>
     Task<string> Read(string name);
 
     /// <summary>
@@ -24,7 +25,7 @@ public interface ICommitFiles
 /// <summary>Commit files kept in a folder on disk, one file per name.</summary>
 public class DirectoryCommitFiles(string root) : ICommitFiles
 {
-    // Throws on an unpaired surrogate, which Encoding.UTF8 would silently store as U+FFFD.
+    // Throws on an unpaired surrogate or on bytes that are not valid UTF-8. Encoding.UTF8 would silently turn either into U+FFFD.
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     public Task<IReadOnlyList<string>> List()
@@ -39,7 +40,7 @@ public class DirectoryCommitFiles(string root) : ICommitFiles
         return Task.FromResult(names);
     }
 
-    public Task<string> Read(string name) => File.ReadAllTextAsync(PathOf(name));
+    public Task<string> Read(string name) => File.ReadAllTextAsync(PathOf(name), Utf8);
 
     public async Task Write(string name, string content)
     {

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
@@ -182,6 +183,7 @@ public class CommitFileSyncTests : IAsyncDisposable
     {
         await _files.Write("commits/notes.json", "not a chunk");
         await _files.Write($"commits/{Guid.NewGuid()}/notes.json", "not a chunk");
+        await _files.Write($"commits/{Guid.NewGuid()}/{long.MaxValue}-0.json", "not a chunk");
         await _ana.Sync(_files).Export();
 
         await _ben.Sync(_files).Import();
@@ -196,6 +198,20 @@ public class CommitFileSyncTests : IAsyncDisposable
         await _files.Write($"commits/{Guid.NewGuid()}/{DateTimeOffset.UtcNow.UtcTicks}-0.json", """[{"unknown": true""");
 
         await Assert.That(() => _ben.Sync(_files).Import()).Throws<JsonException>();
+        await Assert.That(await _ben.CommitCount()).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ImportThrowsWithoutAddingAChunkThatIsNotUtf8()
+    {
+        await _ana.Sync(_files).Export();
+        var path = Path.Combine(_shared, (await _files.List()).Single().Replace('/', Path.DirectorySeparatorChar));
+        var bytes = await File.ReadAllBytesAsync(path);
+        // The project's name, a string in which a lenient read would pass a U+FFFD on to the database.
+        bytes[bytes.AsSpan().IndexOf("test project"u8)] = 0xFF;
+        await File.WriteAllBytesAsync(path, bytes);
+
+        await Assert.That(() => _ben.Sync(_files).Import()).Throws<DecoderFallbackException>();
         await Assert.That(await _ben.CommitCount()).IsEqualTo(0);
     }
 

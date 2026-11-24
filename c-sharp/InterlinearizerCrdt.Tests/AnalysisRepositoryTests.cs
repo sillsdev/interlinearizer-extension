@@ -441,6 +441,20 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyLeavesOutADeleteThatALaterCreateUndoes()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet { Intent = "restore", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaUnlinked, "spare", "spare")) });
+
+        var reply = await ApplyAt(earlier, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        await Assert.That(await Repository.GetTokenAnalyses([TaUnlinked])).Count().IsEqualTo(1);
+        await Assert.That(reply.TokenAnalyses).IsNull();
+    }
+
+    [Test]
     public async Task ApplySkipsADeleteOfARecordNotStored()
     {
         await ApplyNext(FullAnalysis());

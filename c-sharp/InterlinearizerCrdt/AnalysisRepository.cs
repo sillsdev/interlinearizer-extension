@@ -30,7 +30,7 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// What the commit changed, under the change set's intent: each record that it left stored, as
     /// stored, and the id of each record that it deleted. The deleted ids include the links that a
     /// deleted analysis took with it. A skipped update or delete, and an update that wrote nothing,
-    /// are left out.
+    /// are left out. So is a delete that a later-dated create undid.
     /// </returns>
     /// <exception cref="ArgumentException">
     /// If an id appears more than once in the changes, in one record kind or across kinds; if an
@@ -541,7 +541,9 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         /// </summary>
         public async Task<AppliedRecords<T>?> Applied(AnalysisRepository repository, IEnumerable<Guid> taken)
         {
-            var deletes = _deleteIds.Concat(taken).ToList();
+            // A later-dated create may have brought back a record that this commit deleted.
+            var revived = _deleteIds.Count == 0 ? [] : (await repository.StoredInAnyProject<T>(_deleteIds)).Select(r => r.Id).ToHashSet();
+            var deletes = _deleteIds.Where(id => !revived.Contains(id)).Concat(taken).ToList();
             if (_putIds.Count == 0 && deletes.Count == 0) return null;
             var puts = _putIds.Count == 0 ? [] : await repository.StoredInAnyProject<T>(_putIds);
             return new AppliedRecords<T>(puts, deletes);

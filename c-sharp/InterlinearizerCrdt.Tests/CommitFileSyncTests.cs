@@ -192,6 +192,17 @@ public class CommitFileSyncTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task ImportReadsAChunkThatStartsWithAByteOrderMark()
+    {
+        await _ana.Sync(_files).Export();
+        var path = Path.Combine(_shared, (await _files.List()).Single().Replace('/', Path.DirectorySeparatorChar));
+        await File.WriteAllBytesAsync(path, [0xEF, 0xBB, 0xBF, .. await File.ReadAllBytesAsync(path)]);
+
+        await Assert.That(await _ben.Sync(_files).Import()).IsEqualTo(1);
+        await Assert.That(await _ben.Records()).IsEqualTo(await _ana.Records());
+    }
+
+    [Test]
     public async Task ImportThrowsWithoutAddingAnyChunkWhenOneCannotBeRead()
     {
         await _ana.Sync(_files).Export();
@@ -202,14 +213,16 @@ public class CommitFileSyncTests : IAsyncDisposable
     }
 
     [Test]
-    public async Task ImportThrowsWithoutAddingAChunkThatIsNotUtf8()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ImportThrowsWithoutAddingAChunkThatIsNotUtf8(bool byteOrderMark)
     {
         await _ana.Sync(_files).Export();
         var path = Path.Combine(_shared, (await _files.List()).Single().Replace('/', Path.DirectorySeparatorChar));
         var bytes = await File.ReadAllBytesAsync(path);
         // The project's name, a string in which a lenient read would pass a U+FFFD on to the database.
         bytes[bytes.AsSpan().IndexOf("test project"u8)] = 0xFF;
-        await File.WriteAllBytesAsync(path, bytes);
+        await File.WriteAllBytesAsync(path, byteOrderMark ? [0xEF, 0xBB, 0xBF, .. bytes] : bytes);
 
         await Assert.That(() => _ben.Sync(_files).Import()).Throws<DecoderFallbackException>();
         await Assert.That(await _ben.CommitCount()).IsEqualTo(0);

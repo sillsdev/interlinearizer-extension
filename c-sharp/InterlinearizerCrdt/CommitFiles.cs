@@ -28,6 +28,9 @@ public class DirectoryCommitFiles(string root) : ICommitFiles
     // Throws on an unpaired surrogate or on bytes that are not valid UTF-8. Encoding.UTF8 would silently turn either into U+FFFD.
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
+    // Its preamble makes a reader skip a leading UTF-8 byte-order mark.
+    private static readonly UTF8Encoding Utf8WithMark = new(encoderShouldEmitUTF8Identifier: true, throwOnInvalidBytes: true);
+
     public Task<IReadOnlyList<string>> List()
     {
         if (!Directory.Exists(root)) return Task.FromResult<IReadOnlyList<string>>([]);
@@ -40,7 +43,12 @@ public class DirectoryCommitFiles(string root) : ICommitFiles
         return Task.FromResult(names);
     }
 
-    public Task<string> Read(string name) => File.ReadAllTextAsync(PathOf(name), Utf8);
+    public async Task<string> Read(string name)
+    {
+        // File.ReadAllTextAsync would switch to a lenient decoder on finding a byte-order mark.
+        using var reader = new StreamReader(PathOf(name), Utf8WithMark, detectEncodingFromByteOrderMarks: false);
+        return await reader.ReadToEndAsync();
+    }
 
     public async Task Write(string name, string content)
     {

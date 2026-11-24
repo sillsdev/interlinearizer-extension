@@ -89,18 +89,17 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         var phraseLinksBefore = deletesAnalyses ? await StoredIds<PhraseAnalysisLink>() : [];
 
         await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
-        var named = kinds.SelectMany(k => k.Ids).ToHashSet();
         // Read afresh, not from the commit's snapshots. Harmony keeps no snapshot under a commit
         // dated before others, and the stored records hold the changes of later commits.
         return new AppliedChangeSet
         {
             Intent = changes.Intent,
             SegmentAnalyses = await segmentAnalyses.Applied(this, []),
-            SegmentAnalysisLinks = await segmentLinks.Applied(this, await Taken<SegmentAnalysisLink>(segmentLinksBefore, named)),
+            SegmentAnalysisLinks = await segmentLinks.Applied(this, await Taken<SegmentAnalysisLink>(segmentLinksBefore, segmentLinks.AppliedDeleteIds)),
             TokenAnalyses = await tokenAnalyses.Applied(this, []),
-            TokenAnalysisLinks = await tokenLinks.Applied(this, await Taken<TokenAnalysisLink>(tokenLinksBefore, named)),
+            TokenAnalysisLinks = await tokenLinks.Applied(this, await Taken<TokenAnalysisLink>(tokenLinksBefore, tokenLinks.AppliedDeleteIds)),
             PhraseAnalyses = await phraseAnalyses.Applied(this, []),
-            PhraseAnalysisLinks = await phraseLinks.Applied(this, await Taken<PhraseAnalysisLink>(phraseLinksBefore, named)),
+            PhraseAnalysisLinks = await phraseLinks.Applied(this, await Taken<PhraseAnalysisLink>(phraseLinksBefore, phraseLinks.AppliedDeleteIds)),
         };
     }
 
@@ -299,12 +298,13 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
 
     private Task<List<Guid>> StoredIds<T>() where T : AnalysisLink, IObjectBase => Query<T, Guid>(q => q.Select(l => l.Id));
 
-    /// <summary>The links of <paramref name="before"/>, other than those in <paramref name="named"/>, that are no longer stored.</summary>
-    private async Task<List<Guid>> Taken<T>(List<Guid> before, HashSet<Guid> named) where T : AnalysisLink, IObjectBase
+    /// <summary>The links of <paramref name="before"/>, other than those in <paramref name="deleted"/>, that are no longer stored.</summary>
+    private async Task<List<Guid>> Taken<T>(List<Guid> before, IEnumerable<Guid> deleted) where T : AnalysisLink, IObjectBase
     {
         if (before.Count == 0) return before;
         var still = (await StoredIds<T>()).ToHashSet();
-        return before.Where(id => !still.Contains(id) && !named.Contains(id)).ToList();
+        still.UnionWith(deleted);
+        return before.Where(id => !still.Contains(id)).ToList();
     }
 
     /// <summary>
@@ -339,7 +339,7 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// </summary>
     private async Task AssertLinkedAnalysesStored(IKindChanges[] kinds)
     {
-        var deletes = kinds.SelectMany(k => k.DeleteIds).ToHashSet();
+        var deletes = kinds.SelectMany(k => k.StoredDeleteIds(projectId)).ToHashSet();
         foreach (var kept in kinds.SelectMany(k => k.KeptLinks))
         {
             if (deletes.Contains(kept.AnalysisId))
@@ -403,6 +403,12 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
 
         IEnumerable<Guid> DeleteIds { get; }
 
+        /// <summary>
+        /// The ids that the changes delete under this kind, of records stored in <paramref name="projectId"/>.
+        /// Empty until <see cref="LoadStored"/> has run.
+        /// </summary>
+        IEnumerable<Guid> StoredDeleteIds(Guid projectId);
+
         /// <summary>The ids of the stored records that the changes delete. Empty until <see cref="AddChanges"/> has run.</summary>
         IEnumerable<Guid> AppliedDeleteIds { get; }
 
@@ -461,6 +467,9 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         public IEnumerable<Guid> Ids => CreateIds.Concat(UpdateIds).Concat(DeleteIds);
 
         public IEnumerable<Guid> AppliedDeleteIds => _deleteIds;
+
+        public IEnumerable<Guid> StoredDeleteIds(Guid projectId) =>
+            DeleteIds.Where(id => _stored.TryGetValue(id, out var stored) && stored.ProjectId == projectId);
 
         public IEnumerable<AnalysisLink> WrittenLinks =>
             changes?.Creates.OfType<AnalysisLink>().Concat(changes.Updates
@@ -521,7 +530,7 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
                 into.Add(patch);
                 _putIds.Add(after.Id);
             }
-            _deleteIds.AddRange(DeleteIds.Where(id => _stored.TryGetValue(id, out var stored) && stored.ProjectId == projectId));
+            _deleteIds.AddRange(StoredDeleteIds(projectId));
             into.AddRange(_deleteIds.Select(delete));
         }
 

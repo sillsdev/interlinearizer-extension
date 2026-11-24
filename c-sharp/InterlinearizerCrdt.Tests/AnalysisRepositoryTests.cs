@@ -485,6 +485,22 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyReportsALinkThatADeletedAnalysisTookThoughTheChangesDeleteItUnderAnotherKind()
+    {
+        await ApplyNext(FullAnalysis());
+
+        var reply = await ApplyNext(new ChangeSet
+        {
+            Intent = "deleteAnd",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaAnd),
+            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Delete(TlGenAnd),
+        });
+
+        await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenAnd, TlExoAnd]);
+        await Assert.That(reply.PhraseAnalysisLinks).IsNull();
+    }
+
+    [Test]
     public async Task ApplyReportsALinkThatADeletedAnalysisTookBeforeALaterCommitMovedItOff()
     {
         await ApplyNext(FullAnalysis());
@@ -898,6 +914,24 @@ public class AnalysisRepositoryTests : CrdtTestBase
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyKeepsALinkOnAnAnalysisTheChangesDeleteOnlyUnderAnotherKind()
+    {
+        await ApplyNext(FullAnalysis());
+
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approve",
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Delete(TaBeginning),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested),
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning"))),
+        });
+
+        var links = await Repository.FindLinksToAnalyses([TaBeginning]);
+        await Assert.That(links.TokenAnalysisLinks.Single().Status).IsEqualTo(AssignmentStatus.Approved);
     }
 
     [Test]

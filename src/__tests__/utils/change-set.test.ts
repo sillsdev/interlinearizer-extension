@@ -117,7 +117,9 @@ describe('patchRecord', () => {
 
     const patched = patchRecord({ id: 'a' }, { before: { id: 'a' }, after }, ['features']);
 
-    expect(Object.keys(Reflect.get(patched, 'features'))).toStrictEqual(['__proto__']);
+    const features = Reflect.get(patched, 'features');
+    expect(Object.keys(features)).toStrictEqual(['__proto__']);
+    expect(Reflect.get(features, '__proto__')).toBe('x');
   });
 
   it('starts a keyed field that the stored record lacks', () => {

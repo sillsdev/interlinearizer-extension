@@ -779,15 +779,10 @@ export function sessionEditHandlers({
   }
 
   /**
-   * Runs a boundary edit as one edit of a session's analysis, re-anchoring the edited book in the
-   * same undo step. Without that pass, the analysis would stay on the old segments until the text
-   * changes.
+   * Runs a boundary edit as one edit of a session's analysis, with its undo step placed at
+   * `tokenRef`. The same undo step re-anchors the book that holds `tokenRef`. Without that pass,
+   * the analysis would stay on the old segments until the text changes.
    *
-   * @param target - The session that the edit runs in, and the change id it is sent under.
-   * @param intent - Names the edit.
-   * @param tokenRef - A token in the book that the edit reshapes. The edit's undo step is placed at
-   *   this token.
-   * @param stage - Stages the edit over the book's segments.
    * @returns A JSON string of the {@link CommandReply}.
    * @throws If the session is read-only or not open, the source project has no text for the book,
    *   reading the book fails, or the edit is refused or fails. The error is logged before

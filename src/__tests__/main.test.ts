@@ -3884,7 +3884,7 @@ describe('main', () => {
             {
               id: 'sa-1',
               ...FIXTURE_STAMPS,
-              surfaceText: 'In the beginning God',
+              surfaceText: 'In the beginning',
               freeTranslation: { en: 'At first' },
             },
           ],
@@ -3907,6 +3907,7 @@ describe('main', () => {
 
         expect(changes).toMatchObject({
           intent,
+          scope: { segmentation: expect.anything() },
           segmentAnalysisLinks: { puts: [{ id: 'sl-1', status: 'stale' }] },
         });
       },

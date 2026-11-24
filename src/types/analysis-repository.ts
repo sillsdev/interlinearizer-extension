@@ -134,6 +134,12 @@ export type ApplyOptions = {
 export type ApplyResult = {
   /** Restores what the applied changes replaced; applying it undoes them. */
   inverse: ChangeSet;
+  /**
+   * What the apply changed: the changes less each delete of a record not stored. A delete is added
+   * for each link that a deleted analysis took with it. A kind left with no changes is absent. Each
+   * put may come back as stored rather than as given.
+   */
+  applied: ChangeSet;
   /** Whether the draft was marked unsaved before the changes applied. */
   wasDirty: boolean;
 };
@@ -226,15 +232,17 @@ export interface AnalysisRepository {
   /**
    * Applies `changes` to the stored draft whole or not at all, marked unsaved unless `options`
    * keeps the mark, and stamped with this build's model version. A draft never saved counts as an
-   * empty one.
+   * empty one. Deleting an analysis also deletes each stored link that names it and that the
+   * changes leave alone.
    *
    * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is applied.
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is applied.
    * @throws {Error} If the changes reach a book whose stored analysis could not be read; nothing is
    *   applied.
-   * @throws {Error} If a link names an analysis that won't be stored once the changes apply, in an
-   *   implementation that refuses such a link rather than storing it; nothing is applied.
+   * @throws {Error} If the changes put a link that names an analysis that won't be stored once they
+   *   apply, in an implementation that refuses such a link rather than storing it; nothing is
+   *   applied.
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build; nothing is applied.
    * @throws If storage rejects a read or a write. The draft as this repository holds it is

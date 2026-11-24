@@ -65,8 +65,8 @@ function reanchorInTurn(
  * because an undo or redo may restore links or boundary edits there. A book the text lacks is
  * passed as a book with no segments.
  *
- * @returns The changes applied, with their inverse: the changes that undo them. `undefined` when
- *   the draft already read as re-anchored.
+ * @returns What the repository reports that the pass changed, with the changes that restore what
+ *   the pass replaced. `undefined` when the draft already read as re-anchored.
  * @throws Whatever reading the draft or applying the changes throws; nothing is applied or
  *   recorded.
  */

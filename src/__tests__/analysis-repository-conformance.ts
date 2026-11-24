@@ -722,6 +722,71 @@ export function describeAnalysisRepositoryConformance(
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
         });
 
+        it('deletes the links of an analysis it deletes, reporting them as applied', async () => {
+          const repository = await overFullDraft();
+
+          const { applied } = await repository.apply({
+            intent: 'deleteAnd',
+            tokenAnalyses: { puts: [], deletes: [ID.taAnd] },
+          });
+
+          expect(applied.intent).toBe('deleteAnd');
+          expect(applied.tokenAnalyses?.deletes).toStrictEqual([ID.taAnd]);
+          expect([...(applied.tokenAnalysisLinks?.deletes ?? [])].sort()).toStrictEqual(
+            [ID.tlGenAnd, ID.tlExoAnd].sort(),
+          );
+          await expect(repository.findLinksToAnalyses([ID.taAnd])).resolves.toStrictEqual({
+            tokenAnalysisLinks: [],
+            phraseAnalysisLinks: [],
+            segmentAnalysisLinks: [],
+          });
+        });
+
+        it('reports the records it puts as applied, leaving out a kind it left alone', async () => {
+          const repository = await overFullDraft();
+          const { tokenAnalyses } = newRecords();
+
+          const { applied } = await repository.apply({
+            intent: 'put',
+            tokenAnalyses: { puts: tokenAnalyses, deletes: [] },
+          });
+
+          expect(unstampedInIdOrder(applied.tokenAnalyses?.puts ?? [])).toStrictEqual(
+            unstampedInIdOrder(tokenAnalyses),
+          );
+          expect(applied.tokenAnalyses?.deletes).toStrictEqual([]);
+          expect(applied.tokenAnalysisLinks).toBeUndefined();
+        });
+
+        it('reports records the caller may change without changing what is stored', async () => {
+          const repository = await overFullDraft();
+          const { tokenAnalyses } = newRecords();
+
+          const { applied } = await repository.apply({
+            intent: 'put',
+            tokenAnalyses: { puts: tokenAnalyses, deletes: [] },
+          });
+          expect(applied.tokenAnalyses?.puts).toHaveLength(tokenAnalyses.length);
+          (applied.tokenAnalyses?.puts ?? []).forEach((record) => {
+            record.surfaceText = 'changed';
+          });
+
+          await expect(
+            repository.getTokenAnalyses(tokenAnalyses.map(({ id }) => id)).then(unstampedInIdOrder),
+          ).resolves.toStrictEqual(unstampedInIdOrder(newRecords().tokenAnalyses));
+        });
+
+        it('leaves a delete it skipped out of what it reports as applied', async () => {
+          const repository = await overFullDraft();
+
+          const { applied } = await repository.apply({
+            intent: 'deleteMissing',
+            tokenAnalyses: { puts: [], deletes: [ID.taMissing] },
+          });
+
+          expect(applied).toStrictEqual({ intent: 'deleteMissing' });
+        });
+
         it('applies to a draft this repository never loaded', async () => {
           await store.seed(SOURCE, fullDraft());
 
@@ -1436,6 +1501,19 @@ export function describeAnalysisRepositoryConformance(
               fullAnalysis().tokenAnalyses.filter(({ id }) => id !== ID.taBeginning),
             ),
           );
+        });
+
+        it('returns an inverse that restores the links an analysis delete took with it', async () => {
+          await store.seed(SOURCE, fullDraft());
+          const repository = await store.open(SOURCE);
+
+          const { inverse } = await repository.apply({
+            intent: 'deleteAnd',
+            tokenAnalyses: { puts: [], deletes: [ID.taAnd] },
+          });
+          await repository.apply(inverse);
+
+          await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
         });
 
         it('returns an inverse with nothing to restore for a delete it skipped', async () => {

@@ -149,6 +149,18 @@ public class TokenAnalysisTests : CrdtTestBase
     }
 
     [Test]
+    public async Task DeletingTheAnalysisKeepsTheDeletionTimeOfALinkDeletedEarlier()
+    {
+        await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
+        await WriteNextChange(Fixtures.CreateTokenAnalysisLink(_linkId, _analysisId));
+        var linkDeleted = await WriteNextChange(new DeleteChange<TokenAnalysisLink>(_linkId));
+        await WriteNextChange(new DeleteChange<TokenAnalysis>(_analysisId));
+
+        var link = await DataModel.GetLatest<TokenAnalysisLink>(_linkId);
+        await Assert.That(link!.DeletedAt).IsEqualTo(linkDeleted.DateTime);
+    }
+
+    [Test]
     public async Task DeletingTheAnalysisLeavesOtherLinksAlone()
     {
         var otherAnalysisId = Guid.NewGuid();

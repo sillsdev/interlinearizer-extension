@@ -25,6 +25,11 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// the commit stamps them. A delete of a record not stored, or stored in another project, is
     /// skipped. A change set that changes nothing writes no commit.
     /// </summary>
+    /// <returns>
+    /// What the commit changed, under the change set's intent: each record that it left stored, as
+    /// stored, and the id of each record that it deleted. The deleted ids include the links that a
+    /// deleted analysis took with it. A skipped delete, and a patch that wrote nothing, are left out.
+    /// </returns>
     /// <exception cref="ArgumentException">
     /// If an id appears more than once in the changes, in one record kind or across kinds; if a
     /// put's id is or was stored as a record of another kind or in another project; if a put names
@@ -33,7 +38,7 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// Nothing is applied. Harmony keeps every entity in one table, so two records cannot share an
     /// id across kinds or projects, and a put under a deleted record's id brings that record back.
     /// </exception>
-    public async Task Apply(ChangeSet changes, PutMode putMode = PutMode.Replace)
+    public async Task<ChangeSet> Apply(ChangeSet changes, PutMode putMode = PutMode.Replace)
     {
         var kinds = new IKindChanges[]
         {
@@ -77,9 +82,43 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         await AssertLinkedAnalysesStored(kinds);
         var harmonyChanges = new List<IChange>();
         foreach (var kind in kinds) kind.AddChanges(harmonyChanges, putMode, projectId, storedKinds);
-        if (harmonyChanges.Count == 0) return;
+        if (harmonyChanges.Count == 0) return new ChangeSet { Intent = changes.Intent };
 
-        await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
+        var commit = await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
+        return await ChangedBy(commit, changes.Intent);
+    }
+
+    /// <summary>
+    /// The records that <paramref name="commit"/> wrote snapshots of, as a change set. A record
+    /// deleted before the commit, whose snapshot a cascade rewrote, is left out.
+    /// </summary>
+    private async Task<ChangeSet> ChangedBy(Commit commit, string intent)
+    {
+        var records = (await db.Snapshots.Where(s => s.CommitId == commit.Id).ToListAsync())
+            .Select(s => s.Entity.DbObject)
+            .OfType<AnalysisRecord>()
+            .Where(r => r.DeletedAt is null || r.DeletedAt == commit.DateTime)
+            .ToList();
+        return new ChangeSet
+        {
+            Intent = intent,
+            SegmentAnalyses = Changed<SegmentAnalysis>(records),
+            SegmentAnalysisLinks = Changed<SegmentAnalysisLink>(records),
+            TokenAnalyses = Changed<TokenAnalysis>(records),
+            TokenAnalysisLinks = Changed<TokenAnalysisLink>(records),
+            PhraseAnalyses = Changed<PhraseAnalysis>(records),
+            PhraseAnalysisLinks = Changed<PhraseAnalysisLink>(records),
+        };
+    }
+
+    /// <summary>The changes of one kind among <paramref name="records"/>, or null when there are none.</summary>
+    private static RecordChanges<T>? Changed<T>(List<AnalysisRecord> records) where T : AnalysisRecord
+    {
+        var ofKind = records.OfType<T>().ToList();
+        if (ofKind.Count == 0) return null;
+        return new RecordChanges<T>(
+            ofKind.Where(r => r.DeletedAt is null).ToList(),
+            ofKind.Where(r => r.DeletedAt is not null).Select(r => r.Id).ToList());
     }
 
     /// <summary>Every stored record.</summary>

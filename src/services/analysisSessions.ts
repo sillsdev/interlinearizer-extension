@@ -71,7 +71,7 @@ export type SessionEditOptions = {
   changeId?: ChangeId;
   /**
    * The step to record the edit as, which an undo or redo of the edit hands back. A function reads
-   * the step from the changes that the edit applies.
+   * the step from the changes that the edit hands to the repository, re-anchoring included.
    */
   step?: EditStep | ((changes: ChangeSet) => EditStep | undefined);
 };
@@ -322,14 +322,14 @@ async function applyStaged(
   const { unsavedMark } = options;
   const step = typeof options.step === 'function' ? options.step(changes) : options.step;
   const unanchored = reanchorTo?.map(({ bookRef }) => bookRef);
-  const inverse = await session.history.apply(changes, {
+  const applied = await session.history.apply(changes, {
     unsavedMark,
     step,
     ...(unanchored && { unanchored }),
   });
   unanchored?.forEach((bookCode) => storedVersions?.delete(bookCode));
   if (unsavedMark) await noteIfEmpty(session);
-  return { changes, inverse, ...(step && { step }) };
+  return { ...applied, ...(step && { step }) };
 }
 
 async function noteIfEmpty(session: Session): Promise<void> {
@@ -725,8 +725,8 @@ export class AnalysisSessions {
    * under a change id the session has applied gets that undo's reply, or its error, undoing nothing
    * more.
    *
-   * @returns The changes that reverted the edit and re-anchored what the undo restored, with the
-   *   pool buckets they touched, or `undefined` when there is none.
+   * @returns What the repository reports that the undo changed, re-anchoring included, with the
+   *   pool buckets that the undo touched, or `undefined` when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
    * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
@@ -751,8 +751,8 @@ export class AnalysisSessions {
    * under a change id the session has applied gets that redo's reply, or its error, redoing nothing
    * more.
    *
-   * @returns The changes that redid the edit and re-anchored what the redo restored, with the pool
-   *   buckets they touched, or `undefined` when there is none.
+   * @returns What the repository reports that the redo changed, re-anchoring included, with the
+   *   pool buckets that the redo touched, or `undefined` when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
    * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit

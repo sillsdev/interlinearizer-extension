@@ -228,13 +228,12 @@ describe('AnalysisIndex', () => {
     it.each(cases)('%s', (_name, changes, expected) => {
       const base = withUnlinked();
       const before = splitAnalysisByBook(base);
-      const after = splitAnalysisByBook(
-        applyChangeSet({ ...emptyDraft('src'), analysis: base }, changes).draft.analysis,
-      );
+      const { draft, applied } = applyChangeSet({ ...emptyDraft('src'), analysis: base }, changes);
+      const after = splitAnalysisByBook(draft.analysis);
       const index = new AnalysisIndex(base);
 
-      const reached = index.reach(changes);
-      index.apply(changes);
+      const reached = index.reach(applied);
+      index.apply(applied);
 
       expect([...reached].sort()).toStrictEqual([...expected].sort());
       const changed = [...new Set([...before.keys(), ...after.keys()])].filter(

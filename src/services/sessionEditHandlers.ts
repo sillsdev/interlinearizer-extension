@@ -778,19 +778,49 @@ export function sessionEditHandlers({
     return { now: new Date().toISOString(), newId: () => crypto.randomUUID() };
   }
 
+  /**
+   * Runs a boundary edit as one edit of a session's analysis, re-anchoring the edited book in the
+   * same undo step. Without that pass, the analysis would stay on the old segments until the text
+   * changes.
+   *
+   * @param target - The session that the edit runs in, and the change id it is sent under.
+   * @param intent - Names the edit.
+   * @param tokenRef - A token in the book that the edit reshapes. The edit's undo step is placed at
+   *   this token.
+   * @param stage - Stages the edit over the book's segments.
+   * @returns A JSON string of the {@link CommandReply}.
+   * @throws If the session is read-only or not open, the source project has no text for the book,
+   *   reading the book fails, or the edit is refused or fails. The error is logged before
+   *   rethrowing.
+   */
+  function runBoundaryEdit(
+    { sessionId, changeId }: EditTarget,
+    intent: string,
+    tokenRef: string,
+    stage: (buffer: ChangeBuffer, verseBook: ReadonlyBook) => Promise<unknown>,
+  ): Promise<string> {
+    return runSessionEdit(
+      { sessionId, changeId, step: { location: tokenRef } },
+      intent,
+      async (buffer, session) => {
+        const verseBook = await verseBookOf(session, tokenRef);
+        await stage(buffer, verseBook);
+        return { reanchorTo: [verseBook] };
+      },
+    );
+  }
+
   function mergeSegments({
     sessionId,
     secondSegmentStartRef,
     changeId,
   }: ArgsOf<'interlinearizer.mergeSegments'>): Promise<string> {
-    return runSessionEdit(
-      { sessionId, changeId, step: { location: secondSegmentStartRef } },
+    return runBoundaryEdit(
+      { sessionId, changeId },
       'mergeSegments',
-      async (buffer, session) => {
-        const verseBook = await verseBookOf(session, secondSegmentStartRef);
-        await boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef });
-        return { reanchorTo: [verseBook] };
-      },
+      secondSegmentStartRef,
+      (buffer, verseBook) =>
+        boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef }),
     );
   }
 
@@ -799,18 +829,8 @@ export function sessionEditHandlers({
     tokenRef,
     changeId,
   }: ArgsOf<'interlinearizer.splitSegment'>): Promise<string> {
-    return runSessionEdit(
-      { sessionId, changeId, step: { location: tokenRef } },
-      'splitSegment',
-      async (buffer, session) => {
-        const verseBook = await verseBookOf(session, tokenRef);
-        await boundaryCommands.splitSegment(buffer, {
-          ...boundaryEditStamp(),
-          verseBook,
-          tokenRef,
-        });
-        return { reanchorTo: [verseBook] };
-      },
+    return runBoundaryEdit({ sessionId, changeId }, 'splitSegment', tokenRef, (buffer, verseBook) =>
+      boundaryCommands.splitSegment(buffer, { ...boundaryEditStamp(), verseBook, tokenRef }),
     );
   }
 
@@ -820,19 +840,13 @@ export function sessionEditHandlers({
     toRef,
     changeId,
   }: ArgsOf<'interlinearizer.moveBoundary'>): Promise<string> {
-    return runSessionEdit(
-      { sessionId, changeId, step: { location: toRef } },
-      'moveBoundary',
-      async (buffer, session) => {
-        const verseBook = await verseBookOf(session, toRef);
-        await boundaryCommands.moveBoundary(buffer, {
-          ...boundaryEditStamp(),
-          verseBook,
-          fromRef,
-          toRef,
-        });
-        return { reanchorTo: [verseBook] };
-      },
+    return runBoundaryEdit({ sessionId, changeId }, 'moveBoundary', toRef, (buffer, verseBook) =>
+      boundaryCommands.moveBoundary(buffer, {
+        ...boundaryEditStamp(),
+        verseBook,
+        fromRef,
+        toRef,
+      }),
     );
   }
 

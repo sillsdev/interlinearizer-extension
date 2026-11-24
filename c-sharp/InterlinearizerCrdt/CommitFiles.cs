@@ -24,6 +24,9 @@ public interface ICommitFiles
 /// <summary>Commit files kept in a folder on disk, one file per name.</summary>
 public class DirectoryCommitFiles(string root) : ICommitFiles
 {
+    // Throws on an unpaired surrogate, which Encoding.UTF8 would silently store as U+FFFD.
+    private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     public Task<IReadOnlyList<string>> List()
     {
         if (!Directory.Exists(root)) return Task.FromResult<IReadOnlyList<string>>([]);
@@ -47,7 +50,7 @@ public class DirectoryCommitFiles(string root) : ICommitFiles
         var written = $"{path}.tmp";
         await using (var stream = new FileStream(written, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
         {
-            await stream.WriteAsync(Encoding.UTF8.GetBytes(content));
+            await stream.WriteAsync(Utf8.GetBytes(content));
             stream.Flush(flushToDisk: true);
         }
         File.Move(written, path, overwrite: true);

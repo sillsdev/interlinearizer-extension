@@ -58,6 +58,8 @@ What belongs in this section:
 
 Everything else lives in the code's doc comments and tests. A feature rarely needs a line here.
 
+[docs/architecture.md](docs/architecture.md) draws this section as diagrams; a change to a process, seam, or record type drawn there updates its diagram.
+
 ### Extension entry point
 
 [src/main.ts](src/main.ts) is called by Platform.Bible on activation. `activate(context)` starts the C# host and registers the WebView provider, commands, network events, project settings validators, and WebView lifecycle subscriptions. All go in `context.registrations`, so the platform disposes them on deactivation. Each command's handler and its method docs ([commandDocs.ts](src/commandDocs.ts)) are keyed by command name, so a command missing either fails to compile. It keeps one WebView per project, so reopening a project brings its tab to the front.

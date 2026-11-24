@@ -534,6 +534,19 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyDeletingAnAnalysisAtADateBeforeAnotherCommitWritesOneCommit()
+    {
+        await ApplyNext(FullAnalysis());
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet { Intent = "deleteLink", TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Delete(TlExoAnd) });
+        var commits = await DbContext.Commits.CountAsync();
+
+        await ApplyAt(earlier, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits + 1);
+    }
+
+    [Test]
     public async Task ApplyReportsALinkThatADeletedAnalysisTookWhenAReplayDroppedTheLinksSnapshotOnIt()
     {
         await ApplyNext(FullAnalysis());

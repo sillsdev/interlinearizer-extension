@@ -81,27 +81,65 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         foreach (var kind in kinds) kind.AddChanges(harmonyChanges, projectId, storedKinds);
         if (harmonyChanges.Count == 0) return new AppliedChangeSet { Intent = changes.Intent };
 
-        // A commit dated before others deletes the links that were on an analysis at its date. A
-        // later commit may have moved such a link off since. No snapshot need show it on the analysis.
-        var deletesAnalyses = new IKindChanges[] { segmentAnalyses, tokenAnalyses, phraseAnalyses }.Any(k => k.AppliedDeleteIds.Any());
-        var segmentLinksBefore = deletesAnalyses ? await StoredIds<SegmentAnalysisLink>() : [];
-        var tokenLinksBefore = deletesAnalyses ? await StoredIds<TokenAnalysisLink>() : [];
-        var phraseLinksBefore = deletesAnalyses ? await StoredIds<PhraseAnalysisLink>() : [];
+        var deletedAnalyses = new IKindChanges[] { segmentAnalyses, tokenAnalyses, phraseAnalyses }.SelectMany(k => k.AppliedDeleteIds).ToList();
+        if (deletedAnalyses.Count == 0)
+        {
+            await Commit(harmonyChanges, changes.Intent);
+            return await Report(changes.Intent, segmentAnalyses, tokenAnalyses, phraseAnalyses, segmentLinks, tokenLinks, phraseLinks, [], [], []);
+        }
 
-        await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
+        // A delete takes the links that were on the analysis at its commit's date. When no commit
+        // is dated after this one, those are the links on the analysis now. Harmony's clock makes
+        // that the usual case.
+        await using (var transaction = await db.Database.BeginTransactionAsync())
+        {
+            var on = await FindLinksToAnalyses(deletedAnalyses);
+            var commit = await Commit(harmonyChanges, changes.Intent);
+            if (!await db.Commits.WhereAfter(commit).AnyAsync())
+            {
+                await transaction.CommitAsync();
+                return await Report(changes.Intent, segmentAnalyses, tokenAnalyses, phraseAnalyses, segmentLinks, tokenLinks, phraseLinks,
+                    on.SegmentAnalysisLinks.Select(l => l.Id).ToList(),
+                    on.TokenAnalysisLinks.Select(l => l.Id).ToList(),
+                    on.PhraseAnalysisLinks.Select(l => l.Id).ToList());
+            }
+            await transaction.RollbackAsync();
+        }
+        db.ChangeTracker.Clear();
+
+        // A later-dated commit may have moved a link off the analysis since this commit's date.
+        // So every link of the project is a candidate.
+        var segmentLinksBefore = await StoredIds<SegmentAnalysisLink>();
+        var tokenLinksBefore = await StoredIds<TokenAnalysisLink>();
+        var phraseLinksBefore = await StoredIds<PhraseAnalysisLink>();
+        await Commit(harmonyChanges, changes.Intent);
+        return await Report(changes.Intent, segmentAnalyses, tokenAnalyses, phraseAnalyses, segmentLinks, tokenLinks, phraseLinks,
+            segmentLinksBefore, tokenLinksBefore, phraseLinksBefore);
+    }
+
+    private Task<Commit> Commit(List<IChange> harmonyChanges, string intent) =>
+        dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = intent });
+
+    /// <summary>
+    /// What the commit left of each kind. Each candidate link that is no longer stored is reported
+    /// deleted too, unless the changes deleted it themselves.
+    /// </summary>
+    private async Task<AppliedChangeSet> Report(string intent,
+        KindChanges<SegmentAnalysis> segmentAnalyses, KindChanges<TokenAnalysis> tokenAnalyses, KindChanges<PhraseAnalysis> phraseAnalyses,
+        KindChanges<SegmentAnalysisLink> segmentLinks, KindChanges<TokenAnalysisLink> tokenLinks, KindChanges<PhraseAnalysisLink> phraseLinks,
+        List<Guid> segmentLinkCandidates, List<Guid> tokenLinkCandidates, List<Guid> phraseLinkCandidates) =>
         // Read afresh, not from the commit's snapshots. Harmony keeps no snapshot under a commit
         // dated before others, and the stored records hold the changes of later commits.
-        return new AppliedChangeSet
+        new()
         {
-            Intent = changes.Intent,
+            Intent = intent,
             SegmentAnalyses = await segmentAnalyses.Applied(this, []),
-            SegmentAnalysisLinks = await segmentLinks.Applied(this, await Taken<SegmentAnalysisLink>(segmentLinksBefore, segmentLinks.AppliedDeleteIds)),
+            SegmentAnalysisLinks = await segmentLinks.Applied(this, await Taken<SegmentAnalysisLink>(segmentLinkCandidates, segmentLinks.AppliedDeleteIds)),
             TokenAnalyses = await tokenAnalyses.Applied(this, []),
-            TokenAnalysisLinks = await tokenLinks.Applied(this, await Taken<TokenAnalysisLink>(tokenLinksBefore, tokenLinks.AppliedDeleteIds)),
+            TokenAnalysisLinks = await tokenLinks.Applied(this, await Taken<TokenAnalysisLink>(tokenLinkCandidates, tokenLinks.AppliedDeleteIds)),
             PhraseAnalyses = await phraseAnalyses.Applied(this, []),
-            PhraseAnalysisLinks = await phraseLinks.Applied(this, await Taken<PhraseAnalysisLink>(phraseLinksBefore, phraseLinks.AppliedDeleteIds)),
+            PhraseAnalysisLinks = await phraseLinks.Applied(this, await Taken<PhraseAnalysisLink>(phraseLinkCandidates, phraseLinks.AppliedDeleteIds)),
         };
-    }
 
     /// <summary>Every stored record.</summary>
     public async Task<TextAnalysis> ReadAll() => new(
@@ -302,7 +340,7 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     private async Task<List<Guid>> Taken<T>(List<Guid> before, IEnumerable<Guid> deleted) where T : AnalysisLink, IObjectBase
     {
         if (before.Count == 0) return before;
-        var still = (await StoredIds<T>()).ToHashSet();
+        var still = (await Query<T, Guid>(q => q.Where(l => before.Contains(l.Id)).Select(l => l.Id))).ToHashSet();
         still.UnionWith(deleted);
         return before.Where(id => !still.Contains(id)).ToList();
     }

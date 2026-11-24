@@ -1,12 +1,12 @@
 import papi, { logger } from '@papi/backend';
 import { EventEmitter } from 'events';
 import {
-  HOST_READY_LINE,
   hostExecutable,
   startCSharpHost,
   type HostLauncher,
   type HostProcess,
 } from '../../services/csharpHost';
+import { HOST_READY_LINE } from '../../services/csharpRepository';
 import { createTestActivationContext } from '../test-helpers';
 
 const token = createTestActivationContext().executionToken;

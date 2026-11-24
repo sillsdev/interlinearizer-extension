@@ -33,6 +33,9 @@ export type CommandSender = <T>(command: string, args: object) => Promise<T>;
 /** Each command's name is this, then the repository method it serves. */
 export const REPOSITORY_COMMAND_PREFIX = 'interlinearizer.repository.';
 
+/** The line the host writes once it has registered its commands. */
+export const HOST_READY_LINE = 'Interlinearizer host ready';
+
 /**
  * The C# host's slice of {@link AnalysisRepository}, reached one command per method. Every command
  * names the source project the host has open and the interlinear project in it, which the host must

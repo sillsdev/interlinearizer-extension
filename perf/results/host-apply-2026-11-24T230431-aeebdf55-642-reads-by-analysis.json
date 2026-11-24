@@ -1,0 +1,72 @@
+{
+  "kind": "host-apply",
+  "commit": "aeebdf55c275de3a2d7a2cc2df6b6bab8a6fa9b7",
+  "dirty": true,
+  "coreCommit": "33250c6784cf27ea9bd6e0f0a8a729c7644f9f67",
+  "recordedAt": "2026-11-24T23:04:31.603Z",
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i5-8350U CPU @ 1.70GHz",
+    "cores": 8,
+    "memoryGb": 42,
+    "os": "Linux 7.3.5-2-cachyos",
+    "node": "v24.22.2",
+    "loadAverage": [3.34, 3.29, 3.17]
+  },
+  "runs": 10,
+  "tiers": {
+    "empty": {
+      "links": 0,
+      "seedMs": 0,
+      "createUnlinked": {
+        "runs": 10,
+        "medianMs": 10.163,
+        "p90Ms": 12.229,
+        "minMs": 9.783,
+        "maxMs": 39.801
+      },
+      "deleteUnlinked": {
+        "runs": 10,
+        "medianMs": 11.159,
+        "p90Ms": 12.872,
+        "minMs": 9.212,
+        "maxMs": 19.609
+      }
+    },
+    "small": {
+      "links": 2523,
+      "seedMs": 5084,
+      "createUnlinked": {
+        "runs": 10,
+        "medianMs": 11.912,
+        "p90Ms": 13.294,
+        "minMs": 9.7,
+        "maxMs": 19.051
+      },
+      "deleteUnlinked": {
+        "runs": 10,
+        "medianMs": 25.538,
+        "p90Ms": 27.788,
+        "minMs": 24.642,
+        "maxMs": 28.891
+      }
+    },
+    "medium": {
+      "links": 46836,
+      "seedMs": 47684,
+      "createUnlinked": {
+        "runs": 10,
+        "medianMs": 5.882,
+        "p90Ms": 8.626,
+        "minMs": 5.542,
+        "maxMs": 8.727
+      },
+      "deleteUnlinked": {
+        "runs": 10,
+        "medianMs": 342.076,
+        "p90Ms": 354.152,
+        "minMs": 305.255,
+        "maxMs": 355.996
+      }
+    }
+  }
+}

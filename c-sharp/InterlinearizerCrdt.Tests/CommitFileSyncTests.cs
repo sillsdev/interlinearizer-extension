@@ -120,16 +120,28 @@ public class CommitFileSyncTests : IAsyncDisposable
     }
 
     [Test]
-    public async Task ExportWritesAgainAChunkMissingAPart()
+    public async Task ExportCompletesAChunkMissingAPartBeforeNewerCommitsEvenUnderAnotherLimit()
     {
         await _ana.Sync(_files, maxFileChars: TinyFile).Export();
         DeleteSecondPart(await _files.List());
+        await Write(_ana, Fixtures.CreateTokenAnalysis(TokenId));
 
-        var written = await _ana.Sync(_files, maxFileChars: TinyFile).Export();
+        var written = await _ana.Sync(_files).Export();
         await _ben.Sync(_files).Import();
 
-        await Assert.That(written).IsEqualTo(1);
+        await Assert.That(written).IsEqualTo(2);
         await Assert.That(await _ben.Records()).IsEqualTo(await _ana.Records());
+    }
+
+    [Test]
+    public async Task ExportThrowsWhenAChunkMissingAPartNoLongerMatchesItsCommit()
+    {
+        await _ana.Sync(_files, maxFileChars: TinyFile).Export();
+        var names = await _files.List();
+        DeleteSecondPart(names);
+        await _files.Write(names.First(name => name.Contains(".1-of-", StringComparison.Ordinal)), "[");
+
+        await Assert.That(() => _ana.Sync(_files, maxFileChars: TinyFile).Export()).Throws<InvalidDataException>();
     }
 
     [Test]
@@ -157,9 +169,9 @@ public class CommitFileSyncTests : IAsyncDisposable
     public async Task ImportWaitsForEveryPartOfAChunkBeforeReadingItOrLaterChunks()
     {
         await _ana.Sync(_files, maxFileChars: TinyFile).Export();
-        DeleteSecondPart(await _files.List());
         await Write(_ana, Fixtures.CreateTokenAnalysis(TokenId));
         await _ana.Sync(_files).Export();
+        DeleteSecondPart(await _files.List());
 
         await Assert.That(await _ben.Sync(_files).Import()).IsEqualTo(0);
         await Assert.That(await _ben.CommitCount()).IsEqualTo(0);
@@ -187,7 +199,10 @@ public class CommitFileSyncTests : IAsyncDisposable
         await Assert.That(await _ben.CommitCount()).IsEqualTo(0);
     }
 
-    /// <summary>Deletes the second part of the first split chunk in <paramref name="names"/>, as if an export had stopped partway.</summary>
+    /// <summary>
+    /// Deletes the second part of the first split chunk in <paramref name="names"/>, as if an
+    /// export had stopped partway, or a clone had yet to receive the part.
+    /// </summary>
     private void DeleteSecondPart(IEnumerable<string> names) =>
         File.Delete(Path.Combine(_shared, names.First(name => name.Contains(".2-of-", StringComparison.Ordinal))));
 

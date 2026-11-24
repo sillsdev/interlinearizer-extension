@@ -12,7 +12,10 @@ public interface ICommitFiles
     /// <exception cref="IOException">If no file is stored under <paramref name="name"/>.</exception>
     Task<string> Read(string name);
 
-    /// <summary>Stores <paramref name="content"/> under <paramref name="name"/>, replacing any file stored there.</summary>
+    /// <summary>
+    /// Stores <paramref name="content"/> under <paramref name="name"/>, replacing any file stored
+    /// there. A write that fails or stops partway leaves the file as it was.
+    /// </summary>
     Task Write(string name, string content);
 }
 
@@ -37,7 +40,10 @@ public class DirectoryCommitFiles(string root) : ICommitFiles
     {
         var path = PathOf(name);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        await File.WriteAllTextAsync(path, content);
+        // Written aside and then renamed, so that no partial file ever has the name.
+        var written = $"{path}.tmp";
+        await File.WriteAllTextAsync(written, content);
+        File.Move(written, path, overwrite: true);
     }
 
     private string PathOf(string name) => Path.Combine(root, name.Replace('/', Path.DirectorySeparatorChar));

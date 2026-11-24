@@ -16,7 +16,8 @@ namespace Interlinearizer.Crdt;
 /// and never changed. A chunk is a JSON array of commits, named after the time of its newest
 /// commit. The names alone tell which commits a client has exported, and which chunks a database
 /// lacks. Only a single commit can make a chunk too long for one file. That chunk is split into
-/// parts named <c>&lt;time&gt;.&lt;part&gt;-of-&lt;parts&gt;.json</c>.
+/// parts named <c>&lt;time&gt;.&lt;part&gt;-of-&lt;parts&gt;.json</c>. What each part holds depends
+/// only on the commit and the number of parts.
 /// </para>
 /// <para>
 /// Call only from work that <see cref="OpenSources.Exclusive"/> runs for the source, because its
@@ -40,13 +41,27 @@ public partial class CommitFileSync(
     private const string Folder = "commits";
 
     /// <summary>
-    /// Writes this client's commits that no chunk holds yet, as new chunks. A chunk that an earlier
-    /// export left missing a part is written again.
+    /// Writes this client's commits that no chunk holds yet, as new chunks. Before that, it writes
+    /// any parts that an earlier export left out of a chunk.
     /// </summary>
     /// <returns>How many commits were written.</returns>
+    /// <exception cref="InvalidDataException">
+    /// If a chunk's missing parts cannot be written to match its stored ones, as when a build that
+    /// serializes commits differently wrote the chunk. Nothing more is exported.
+    /// </exception>
     public async Task<int> Export()
     {
-        var exported = (await Chunks()).Where(c => c.ClientId == client.Id && c.Complete).Max(c => c.Newest);
+        var chunks = (await Chunks()).Where(c => c.ClientId == client.Id).ToList();
+        var written = 0;
+        // A chunk missing a part is made whole first. Otherwise a later chunk could also take the
+        // broken chunk's commit. The cutoff would then pass the broken chunk for good.
+        foreach (var broken in chunks.Where(c => !c.Complete))
+        {
+            await WriteMissingParts(broken);
+            written++;
+        }
+
+        var exported = chunks.Max(c => c.Newest);
         var commits = db.Commits.AsNoTracking().Include(c => c.ChangeEntities).Where(c => c.ClientId == client.Id);
         if (exported is not null)
         {
@@ -56,7 +71,6 @@ public partial class CommitFileSync(
                 || (c.HybridDateTime.DateTime == dateTime && c.HybridDateTime.Counter > counter));
         }
 
-        var written = 0;
         var chunk = new List<string>();
         // Counts the array's brackets and commas as well as its commits.
         var chunkChars = 1;
@@ -98,14 +112,12 @@ public partial class CommitFileSync(
         var commits = new List<Commit>();
         foreach (var clientChunks in (await Chunks()).GroupBy(c => c.ClientId))
         {
-            var stored = await db.Commits.AsNoTracking()
-                .Where(c => c.ClientId == clientChunks.Key)
-                .DefaultOrderDescending()
-                .Select(c => c.HybridDateTime)
-                .FirstOrDefaultAsync();
+            var chunks = clientChunks.ToList();
+            var read = chunks.Count;
+            while (read > 0 && !await Stored(clientChunks.Key, chunks[read - 1].Newest)) read--;
             // Reading past a chunk missing a part would lose that chunk: later imports skip every
-            // chunk older than the newest commit stored.
-            var unread = clientChunks.Where(c => stored is null || c.Newest.CompareTo(stored) > 0).TakeWhile(c => c.Complete);
+            // chunk older than the newest one stored.
+            var unread = chunks.Skip(read).TakeWhile(c => c.Complete);
             foreach (var chunk in unread)
             {
                 var json = new StringBuilder();
@@ -118,26 +130,68 @@ public partial class CommitFileSync(
         return commits.Count;
     }
 
+    /// <summary>Whether the database holds the commit that <paramref name="clientId"/> made at <paramref name="time"/>.</summary>
+    private Task<bool> Stored(Guid clientId, HybridDateTime time) =>
+        // Looks up one time, which the database indexes, rather than a client's newest commit, which scans every newer commit.
+        db.Commits.AnyAsync(c => c.HybridDateTime.DateTime == time.DateTime
+            && c.HybridDateTime.Counter == time.Counter
+            && c.ClientId == clientId);
+
     private async Task Write(List<string> commits, HybridDateTime newest)
     {
         var json = $"[{string.Join(',', commits)}]";
-        var name = $"{Folder}/{client.Id}/{newest.DateTime.UtcTicks}-{newest.Counter}";
         if (json.Length <= maxFileChars)
         {
-            await files.Write($"{name}.json", json);
+            await files.Write($"{Name(newest)}.json", json);
             return;
         }
-        var parts = new List<string>();
-        for (var start = 0; start < json.Length;)
-        {
-            var length = Math.Min(maxFileChars, json.Length - start);
-            // A part ending inside a surrogate pair could not be written as UTF-8.
-            if (start + length < json.Length && char.IsHighSurrogate(json[start + length - 1])) length--;
-            parts.Add(json.Substring(start, length));
-            start += length;
-        }
-        for (var part = 0; part < parts.Count; part++) await files.Write($"{name}.{part + 1}-of-{parts.Count}.json", parts[part]);
+        // Parts aim one character under the limit, because a part may start a character early to keep a surrogate pair whole.
+        var parts = Split(json, (json.Length + maxFileChars - 2) / (maxFileChars - 1));
+        for (var part = 1; part <= parts.Count; part++) await files.Write(PartName(newest, part, parts.Count), parts[part - 1]);
     }
+
+    /// <summary>
+    /// Writes the parts that <paramref name="chunk"/> lacks. A chunk in parts holds one commit, the
+    /// one at the chunk's time.
+    /// </summary>
+    /// <exception cref="InvalidDataException">If a stored part no longer matches the commit.</exception>
+    private async Task WriteMissingParts(Chunk chunk)
+    {
+        var newest = chunk.Newest;
+        var commit = await db.Commits.AsNoTracking().Include(c => c.ChangeEntities)
+            .SingleAsync(c => c.ClientId == client.Id
+                && c.HybridDateTime.DateTime == newest.DateTime
+                && c.HybridDateTime.Counter == newest.Counter);
+        var parts = Split($"[{JsonSerializer.Serialize(commit, harmonyJson)}]", chunk.Files[0].Parts);
+        foreach (var file in chunk.Files)
+        {
+            if (file.Parts != parts.Count || await files.Read(file.Name) != parts[file.Part - 1])
+            {
+                throw new InvalidDataException($"Chunk file {file.Name} no longer matches its commit, so the chunk's other parts cannot be written");
+            }
+        }
+        foreach (var part in Enumerable.Range(1, parts.Count).Except(chunk.Files.Select(f => f.Part)))
+        {
+            await files.Write(PartName(newest, part, parts.Count), parts[part - 1]);
+        }
+    }
+
+    /// <summary>Splits <paramref name="json"/> into <paramref name="count"/> parts of equal length, give or take one character.</summary>
+    private static List<string> Split(string json, int count)
+    {
+        var cuts = new int[count + 1];
+        for (var part = 1; part <= count; part++)
+        {
+            var cut = (int)((long)json.Length * part / count);
+            // A part ending inside a surrogate pair could not be written as UTF-8.
+            cuts[part] = cut < json.Length && char.IsHighSurrogate(json[cut - 1]) ? cut - 1 : cut;
+        }
+        return [.. Enumerable.Range(0, count).Select(part => json[cuts[part]..cuts[part + 1]])];
+    }
+
+    private string Name(HybridDateTime newest) => $"{Folder}/{client.Id}/{newest.DateTime.UtcTicks}-{newest.Counter}";
+
+    private string PartName(HybridDateTime newest, int part, int parts) => $"{Name(newest)}.{part}-of-{parts}.json";
 
     /// <summary>Every chunk stored, oldest first. Files not named as chunks are skipped.</summary>
     private async Task<List<Chunk>> Chunks() =>
@@ -183,6 +237,7 @@ public partial class CommitFileSync(
             if (!match.Groups[3].Success) return new ChunkFile(name, id, newest, 1, 1);
             return int.TryParse(match.Groups[3].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var part)
                 && int.TryParse(match.Groups[4].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var parts)
+                && part >= 1 && part <= parts
                     ? new ChunkFile(name, id, newest, part, parts)
                     : null;
         }

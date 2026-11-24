@@ -48,6 +48,11 @@ public class CommitFileSyncPerf
             var files = new DirectoryCommitFiles(Path.Combine(folder.FullName, "files"));
             await using var ana = await PerfClient.Open(Path.Combine(folder.FullName, "ana.sqlite"));
             await using var ben = await PerfClient.Open(Path.Combine(folder.FullName, "ben.sqlite"));
+            await using var cal = await PerfClient.Open(Path.Combine(folder.FullName, "cal.sqlite"));
+
+            // A writer whose only commit is older than all of Ana's, like one who stopped writing long ago.
+            await cal.WriteOne();
+            await cal.Sync(files).Export();
 
             var build = Stopwatch.StartNew();
             await ana.Seed(analysis, changesPerCommit);
@@ -158,6 +163,9 @@ public class CommitFileSyncPerf
 
         public CommitFileSync Sync(ICommitFiles files) => new(DataModel, Db, _client, files,
             _scope.ServiceProvider.GetRequiredService<IOptions<HarmonyConfig>>().Value.JsonSerializerOptions);
+
+        /// <summary>Writes one commit, which creates a project of its own.</summary>
+        public Task WriteOne() => DataModel.AddChange(_client.Id, new CreateInterlinearProjectChange(Guid.NewGuid()) { Name = "dormant" });
 
         /// <summary>
         /// Writes the project, then <paramref name="analysis"/> in commits of

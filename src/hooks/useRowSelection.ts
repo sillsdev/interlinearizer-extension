@@ -16,10 +16,13 @@ export type RowSelection = Readonly<{
    */
   orderedCheckedIds: readonly string[];
   /**
-   * Whether the host has confirmed that the listing keeps every checked row. Until it has, the
-   * checked rows may include some the listing has since dropped, so a bulk action must wait.
+   * Whether the host has confirmed, since the catalog last changed, that the listing keeps every
+   * checked row. Until it has, the checked rows may include some the listing has since dropped, so
+   * a bulk action must wait.
    */
   isSettled: boolean;
+  /** Asks the host again to confirm the checked rows; present only after it could not. */
+  retry: (() => void) | undefined;
   setChecked: (analysisId: string, checked: boolean) => void;
   /** Checks every row the listing keeps, once the host lists them, or unchecks them all. */
   setAllChecked: (checked: boolean) => void;
@@ -67,14 +70,15 @@ export default function useRowSelection(
     request,
     !seeded && chosenIds.length > 0 ? chosenIds : undefined,
   );
-  const positions = seeded ?? fetched;
+  const positions = seeded ?? fetched?.positions;
 
   const keptIds = positions && chosenIds.filter((id) => positions.has(id));
   if (keptIds && keptIds.length < chosenIds.length) setChosenIds(keptIds);
 
   const checkedIds = useMemo(() => new Set(chosenIds), [chosenIds]);
 
-  const isSettled = chosenIds.length === 0 || positions !== undefined;
+  const isSettled = chosenIds.length === 0 || (positions !== undefined && !fetched?.outdated);
+  const retry = fetched?.retry;
 
   const orderedCheckedIds = useMemo(() => {
     const placed = chosenIds.flatMap((id): [string, number][] => {
@@ -118,7 +122,7 @@ export default function useRowSelection(
   );
 
   return useMemo(
-    () => ({ checkedIds, orderedCheckedIds, isSettled, setChecked, setAllChecked }),
-    [checkedIds, orderedCheckedIds, isSettled, setChecked, setAllChecked],
+    () => ({ checkedIds, orderedCheckedIds, isSettled, retry, setChecked, setAllChecked }),
+    [checkedIds, orderedCheckedIds, isSettled, retry, setChecked, setAllChecked],
   );
 }

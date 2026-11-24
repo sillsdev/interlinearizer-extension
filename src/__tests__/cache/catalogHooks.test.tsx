@@ -185,7 +185,7 @@ describe('useCatalogPositions', () => {
     });
     await settle();
 
-    expect(result.current).toStrictEqual(new Map([['ta-beginning', 0]]));
+    expect(result.current?.positions).toStrictEqual(new Map([['ta-beginning', 0]]));
   });
 
   it('fetches nothing while no ids are named', async () => {
@@ -208,6 +208,30 @@ describe('useCatalogPositions', () => {
     await settle();
 
     expect(timesSent('interlinearizer.locateCatalogRows')).toBe(before + 1);
+  });
+
+  it('offers no retry while the positions arrive', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
+      wrapper,
+    });
+    await settle();
+
+    expect(result.current?.retry).toBeUndefined();
+  });
+
+  it('offers a retry after a fetch of the positions fails', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.locateCatalogRows');
+
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
+      wrapper,
+    });
+    await settle();
+
+    expect(result.current?.positions).toBeUndefined();
+    expect(result.current?.retry).toEqual(expect.any(Function));
   });
 });
 

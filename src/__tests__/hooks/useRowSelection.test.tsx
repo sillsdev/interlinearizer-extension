@@ -49,6 +49,20 @@ async function renderSelection(initial = '') {
   };
 }
 
+/** Holds every request to place rows until the returned release is called. */
+function holdLocating(): () => void {
+  const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+    if (call[0] === 'interlinearizer.locateCatalogRows') await held;
+    return serve?.(...call);
+  });
+  return () => release();
+}
+
 describe('useRowSelection', () => {
   it('starts with nothing checked', async () => {
     const { result } = await renderSelection();
@@ -163,15 +177,7 @@ describe('useRowSelection', () => {
 
   it('is unsettled until the host confirms the listing keeps the checked rows', async () => {
     const { result } = await renderSelection();
-    const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
-    let release = () => {};
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
-      if (call[0] === 'interlinearizer.locateCatalogRows') await held;
-      return serve?.(...call);
-    });
+    const release = holdLocating();
 
     act(() => result.current.setChecked('ta-b', true));
 
@@ -179,6 +185,59 @@ describe('useRowSelection', () => {
     release();
     await settle();
     expect(result.current.isSettled).toBe(true);
+  });
+
+  it('is unsettled while the host confirms the checked rows again after a change names the catalog', async () => {
+    const { result } = await renderSelection();
+    act(() => result.current.setChecked('ta-b', true));
+    await settle();
+    const release = holdLocating();
+
+    act(() =>
+      relayChange(
+        changeNaming(sessionIdOf('interlinearizer.locateCatalogRows'), ['getCatalogRows']),
+      ),
+    );
+
+    expect(result.current.isSettled).toBe(false);
+    release();
+    await settle();
+    expect(result.current.isSettled).toBe(true);
+  });
+
+  it('offers no retry while the host confirms the checked rows', async () => {
+    const { result } = await renderSelection();
+
+    act(() => result.current.setChecked('ta-b', true));
+    await settle();
+
+    expect(result.current.retry).toBeUndefined();
+  });
+
+  it('offers a retry, staying unsettled, when the host cannot confirm the checked rows', async () => {
+    const { result } = await renderSelection();
+    failing('interlinearizer.locateCatalogRows');
+
+    act(() => result.current.setChecked('ta-b', true));
+    await settle();
+
+    expect(result.current.isSettled).toBe(false);
+    expect(result.current.retry).toEqual(expect.any(Function));
+  });
+
+  it('settles once a retry confirms the checked rows', async () => {
+    const { result } = await renderSelection();
+    const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+    failing('interlinearizer.locateCatalogRows');
+    act(() => result.current.setChecked('ta-b', true));
+    await settle();
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => serve?.(...call));
+
+    act(() => result.current.retry?.());
+    await settle();
+
+    expect(result.current.isSettled).toBe(true);
+    expect(result.current.retry).toBeUndefined();
   });
 
   it('unchecks every row at once', async () => {

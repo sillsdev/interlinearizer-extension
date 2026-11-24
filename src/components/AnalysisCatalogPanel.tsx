@@ -423,7 +423,7 @@ export default function AnalysisCatalogPanel({
    * does not hold it; that row can sit anywhere, so it is not otherwise within the mounted window.
    */
   const revealPositions = useCatalogPositions(request, rowToReveal && [rowToReveal.analysisId]);
-  const revealedRowIndex = rowToReveal && revealPositions?.get(rowToReveal.analysisId);
+  const revealedRowIndex = rowToReveal && revealPositions?.positions?.get(rowToReveal.analysisId);
 
   // Capped at FETCH_AHEAD_COUNT past the rows that have arrived, but long enough to reach a revealed
   // row. Without the cap, a sentinel that stays in reach keeps growing the window while rows are
@@ -509,8 +509,14 @@ export default function AnalysisCatalogPanel({
   const readOnly = useAnalysisReadOnly();
 
   // Listing order picks a merge's survivor when uses tie.
-  const { checkedIds, orderedCheckedIds, isSettled, setChecked, setAllChecked } =
-    useRowSelection(request);
+  const {
+    checkedIds,
+    orderedCheckedIds,
+    isSettled,
+    retry: retrySelection,
+    setChecked,
+    setAllChecked,
+  } = useRowSelection(request);
 
   /** What a bulk action over the checked rows reaches. */
   const selection = useSelectionSummary(orderedCheckedIds);
@@ -1219,6 +1225,7 @@ export default function AnalysisCatalogPanel({
             onClearGloss={handleClearGlossChecked}
             onMerge={mergeChecked}
             onDelete={handleDeleteChecked}
+            onRetry={retrySelection}
             usageCount={checkedUsageCount}
           />
         )}

@@ -90,24 +90,43 @@ export async function fetchCatalogPositions(
   );
 }
 
+/** What {@link useCatalogPositions} answers. */
+export type CatalogPositions = Readonly<{
+  /**
+   * Where each of the ids sits, by id, leaving out those the listing does not keep. `undefined`
+   * until the positions arrive, and after a fetch of them fails.
+   */
+  positions: ReadonlyMap<string, number> | undefined;
+  /** Whether a change to the catalog has arrived since the fetch of `positions` began. */
+  outdated: boolean;
+  /** Fetches the positions again; present only after a fetch of them failed. */
+  retry: (() => void) | undefined;
+}>;
+
 /**
- * Where in the listing of the session's catalog that `request` asks for each of `analysisIds` sits,
- * by id, leaving out those it does not keep. Fetched again whenever a change names the catalog.
- * `undefined` while `analysisIds` is `undefined`, until the positions arrive, and after a fetch of
- * them fails.
+ * Where in the listing of the session's catalog that `request` asks for each of `analysisIds` sits.
+ * Fetched again whenever a change names the catalog. `undefined` while `analysisIds` is
+ * `undefined`.
  */
 export function useCatalogPositions(
   request: Omit<CatalogRowsRequest, 'offset' | 'count'>,
   analysisIds: readonly string[] | undefined,
-): ReadonlyMap<string, number> | undefined {
+): CatalogPositions | undefined {
   const { sessionId } = usePageSession();
   const key = analysisIds === undefined ? undefined : JSON.stringify([request, analysisIds]);
-  return useNamedFetch(
+  const fetched = useNamedFetch(
     'getCatalogRows',
     'catalog positions',
     key,
     async () => new Map(await fetchCatalogPositions(sessionId, request, analysisIds)),
-  )?.value;
+  );
+  const positions = fetched?.value;
+  const outdated = fetched?.outdated;
+  const retry = fetched?.failed ? fetched.retry : undefined;
+  return useMemo(
+    () => (outdated === undefined ? undefined : { positions, outdated, retry }),
+    [positions, outdated, retry],
+  );
 }
 
 /** The rows of the analyses `analysisIds` names, in that order, leaving out unstored ids. */

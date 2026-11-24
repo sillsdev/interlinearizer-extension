@@ -105,4 +105,22 @@ describe('CatalogSelectionBar', () => {
 
     expect(screen.queryByTestId('catalog-selection-merge')).not.toBeInTheDocument();
   });
+
+  it('notes that the checked rows could not be confirmed, offering to ask again', async () => {
+    const onRetry = jest.fn();
+    renderBar({ count: 1, onRetry });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_selectionCheckFailed%',
+    );
+    await userEvent.click(screen.getByTestId('catalog-selection-retry'));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('offers no retry while nothing has failed', () => {
+    renderBar({ count: 1 });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-selection-retry')).not.toBeInTheDocument();
+  });
 });

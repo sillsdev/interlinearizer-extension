@@ -2,6 +2,7 @@ using Interlinearizer.Crdt.Changes;
 using Interlinearizer.Crdt.Entities;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using SIL.Harmony;
 using SIL.Harmony.Changes;
@@ -43,6 +44,8 @@ public static class InterlinearizerCrdtKernel
             // whichever container built them first.
             builder.EnableServiceProviderCaching(false);
             configureDb(provider, builder);
+            // Sends each id list as one JSON parameter, because SQLite caps the parameters of a statement.
+            new SqliteDbContextOptionsBuilder(builder).UseParameterizedCollectionMode(ParameterTranslationMode.Parameter);
             builder.EnableDetailedErrors();
         });
         services.AddCrdtData<InterlinearizerCrdtDbContext>(ConfigureHarmony);
@@ -58,54 +61,42 @@ public static class InterlinearizerCrdtKernel
             .Add<PatchInterlinearProjectChange>()
             .Add<DeleteChange<InterlinearProject>>()
             .Add<CreateSegmentAnalysisChange>()
-            .Add<ReplaceSegmentAnalysisChange>()
             .Add<PatchSegmentAnalysisChange>()
             .Add<DeleteChange<SegmentAnalysis>>()
             .Add<CreateSegmentAnalysisLinkChange>()
-            .Add<ReplaceSegmentAnalysisLinkChange>()
             .Add<PatchSegmentAnalysisLinkChange>()
             .Add<DeleteChange<SegmentAnalysisLink>>()
             .Add<CreateTokenAnalysisChange>()
-            .Add<ReplaceTokenAnalysisChange>()
             .Add<PatchTokenAnalysisChange>()
             .Add<DeleteChange<TokenAnalysis>>()
             .Add<CreateTokenAnalysisLinkChange>()
-            .Add<ReplaceTokenAnalysisLinkChange>()
             .Add<PatchTokenAnalysisLinkChange>()
             .Add<DeleteChange<TokenAnalysisLink>>()
             .Add<CreatePhraseAnalysisChange>()
-            .Add<ReplacePhraseAnalysisChange>()
             .Add<PatchPhraseAnalysisChange>()
             .Add<DeleteChange<PhraseAnalysis>>()
             .Add<CreatePhraseAnalysisLinkChange>()
-            .Add<ReplacePhraseAnalysisLinkChange>()
             .Add<PatchPhraseAnalysisLinkChange>()
             .Add<DeleteChange<PhraseAnalysisLink>>();
 
         config.ModelVersionBuilder
             .Add(0, "Analysis entities", v => v
                 .Change<CreateSegmentAnalysisChange>()
-                .Change<ReplaceSegmentAnalysisChange>()
                 .Change<PatchSegmentAnalysisChange>()
                 .Change<DeleteChange<SegmentAnalysis>>()
                 .Change<CreateSegmentAnalysisLinkChange>()
-                .Change<ReplaceSegmentAnalysisLinkChange>()
                 .Change<PatchSegmentAnalysisLinkChange>()
                 .Change<DeleteChange<SegmentAnalysisLink>>()
                 .Change<CreateTokenAnalysisChange>()
-                .Change<ReplaceTokenAnalysisChange>()
                 .Change<PatchTokenAnalysisChange>()
                 .Change<DeleteChange<TokenAnalysis>>()
                 .Change<CreateTokenAnalysisLinkChange>()
-                .Change<ReplaceTokenAnalysisLinkChange>()
                 .Change<PatchTokenAnalysisLinkChange>()
                 .Change<DeleteChange<TokenAnalysisLink>>()
                 .Change<CreatePhraseAnalysisChange>()
-                .Change<ReplacePhraseAnalysisChange>()
                 .Change<PatchPhraseAnalysisChange>()
                 .Change<DeleteChange<PhraseAnalysis>>()
                 .Change<CreatePhraseAnalysisLinkChange>()
-                .Change<ReplacePhraseAnalysisLinkChange>()
                 .Change<PatchPhraseAnalysisLinkChange>()
                 .Change<DeleteChange<PhraseAnalysisLink>>())
             .Add(1, "Interlinear projects", v => v

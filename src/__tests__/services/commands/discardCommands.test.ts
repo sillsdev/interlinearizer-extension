@@ -9,7 +9,7 @@ import {
 } from '../../../services/commands/discardCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
+import { asPuts, FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
 
 function link(id: string, tokenRef: string): TokenAnalysisLink {
   return {
@@ -119,7 +119,7 @@ describe('discardAll', () => {
       analysisLanguages: [],
     });
 
-    expect(buffer.toChangeSet('discardAll')).toStrictEqual({ intent: 'discardAll' });
+    expect(asPuts(buffer.toChangeSet('discardAll'))).toStrictEqual({ intent: 'discardAll' });
     expect(changedBooks).toStrictEqual([]);
   });
 
@@ -147,7 +147,7 @@ describe('discardAll', () => {
       analysisLanguages: [],
     });
 
-    expect(buffer.toChangeSet('discardAll')).toStrictEqual({ intent: 'discardAll' });
+    expect(asPuts(buffer.toChangeSet('discardAll'))).toStrictEqual({ intent: 'discardAll' });
   });
 
   it('stages the scope with the restored boundaries', async () => {
@@ -160,7 +160,9 @@ describe('discardAll', () => {
       analysisLanguages: [],
     });
 
-    expect(buffer.toChangeSet('discardAll').scope?.segmentation).toStrictEqual(merged('GEN 1:2:0'));
+    expect(buffer.toChangeSet('discardAll').scope?.after.segmentation).toStrictEqual(
+      merged('GEN 1:2:0'),
+    );
   });
 
   it("stages the scope with the saved project's analysis languages, keeping its boundaries", async () => {
@@ -174,8 +176,8 @@ describe('discardAll', () => {
     });
 
     const { scope } = buffer.toChangeSet('discardAll');
-    expect(scope?.analysisLanguages).toStrictEqual(['en']);
-    expect(scope?.segmentation).toStrictEqual(merged('GEN 1:2:0'));
+    expect(scope?.after.analysisLanguages).toStrictEqual(['en']);
+    expect(scope?.after.segmentation).toStrictEqual(merged('GEN 1:2:0'));
   });
 
   it('keeps the analysis languages when the draft saves to no project', async () => {
@@ -184,7 +186,7 @@ describe('discardAll', () => {
 
     await discardAll(buffer, stored, undefined);
 
-    expect(buffer.toChangeSet('discardAll').scope?.analysisLanguages).toStrictEqual(['fr']);
+    expect(buffer.toChangeSet('discardAll').scope?.after.analysisLanguages).toStrictEqual(['fr']);
   });
 
   it('stages a scope with no boundaries when the restore has none', async () => {
@@ -204,7 +206,7 @@ describe('discardAll', () => {
 
     await discardAll(buffer, stored, undefined);
 
-    expect(buffer.toChangeSet('discardAll')).not.toHaveProperty('scope');
+    expect(asPuts(buffer.toChangeSet('discardAll'))).not.toHaveProperty('scope');
   });
 });
 
@@ -234,7 +236,7 @@ describe('discardBook', () => {
       analysisLanguages: [],
     });
 
-    expect(buffer.toChangeSet('discardBook')).toStrictEqual({ intent: 'discardBook' });
+    expect(asPuts(buffer.toChangeSet('discardBook'))).toStrictEqual({ intent: 'discardBook' });
     expect(changedBooks).toStrictEqual([]);
   });
 
@@ -248,6 +250,6 @@ describe('discardBook', () => {
       analysisLanguages: ['en'],
     });
 
-    expect(buffer.toChangeSet('discardBook')).not.toHaveProperty('scope');
+    expect(asPuts(buffer.toChangeSet('discardBook'))).not.toHaveProperty('scope');
   });
 });

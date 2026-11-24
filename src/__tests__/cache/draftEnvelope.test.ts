@@ -2,7 +2,7 @@
 
 import type { DraftEnvelope } from 'interlinearizer';
 import { DraftEnvelopeStore } from '../../cache/draftEnvelope';
-import type { ChangeSet, ScopeRecord } from '../../types/analysis-repository';
+import type { AppliedChangeSet, ScopeRecord } from '../../types/analysis-repository';
 import { emptyDraft } from '../../types/empty-factories';
 import { envelopeOf as draftEnvelopeOf } from '../../types/draft-envelope';
 import { scopeRecordOf } from '../../utils/change-set';
@@ -18,7 +18,7 @@ function scopeWith(analysisLanguages: string[]): ScopeRecord {
 }
 
 /** Changes that delete a payload. */
-const CHANGES: ChangeSet = { intent: 'x', tokenAnalyses: { puts: [], deletes: ['a'] } };
+const CHANGES: AppliedChangeSet = { intent: 'x', tokenAnalyses: { puts: [], deletes: ['a'] } };
 
 /** A fetch whose calls each wait until `resolveNext` hands them an envelope. */
 function heldFetch() {

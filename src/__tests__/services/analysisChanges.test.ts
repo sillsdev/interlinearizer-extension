@@ -3,9 +3,11 @@
 import type { Book, TextAnalysis } from 'interlinearizer';
 import { describeChange, describeScriptureEdit } from '../../services/analysisChanges';
 import { DraftRepository } from '../../services/draftRepository';
-import type { ChangeSet } from '../../types/analysis-repository';
+import type { AppliedChangeSet, ChangeSet } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
+import { scopeRecordOf } from '../../utils/change-set';
 import {
+  creating,
   FIXTURE_STAMPS,
   makePhraseLink,
   makeTokenLink,
@@ -14,11 +16,12 @@ import {
   seedRepository,
   silentLogger,
   tokenRefOf,
+  updating,
 } from '../test-helpers';
 
 const book = makeVerseBook([
   { sid: 'GEN 1:1', text: 'In the beginning' },
-  { sid: 'GEN 1:2', text: 'God created' },
+  { sid: 'GEN 1:2', text: 'Rain fell' },
   { sid: 'GEN 1:3', text: 'the light' },
 ]);
 const ref = (surfaceText: string) => tokenRefOf(book, surfaceText);
@@ -37,53 +40,52 @@ const held = (bookId: string): Book | undefined => (bookId === 'GEN' ? book : un
 
 describe('describeChange', () => {
   it("names the range of the segment a token link was put on, the link's analysis, and its token's form", async () => {
-    const link = makeTokenLink('ta-created', ref('created'), { surfaceText: 'Created' });
-    const changes: ChangeSet = {
+    const link = makeTokenLink('ta-fell', ref('fell'), { surfaceText: 'Fell' });
+    const changes: AppliedChangeSet = {
       intent: 'writeGloss',
       tokenAnalysisLinks: { puts: [link], deletes: [] },
     };
     const inverse: ChangeSet = {
       intent: 'writeGloss',
-      tokenAnalysisLinks: { puts: [], deletes: [link.id] },
     };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
 
     expect(change).toStrictEqual({
       books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
-      analysisIds: ['ta-created'],
-      forms: ['created'],
+      analysisIds: ['ta-fell'],
+      forms: ['fell'],
       queries: ['getCatalogRows', 'getConcordance'],
     });
   });
 
   it("names the form of a removed token link's token", async () => {
-    const link = makeTokenLink('ta-created', ref('created'), { surfaceText: 'Created' });
-    const changes: ChangeSet = {
+    const link = makeTokenLink('ta-fell', ref('fell'), { surfaceText: 'Fell' });
+    const changes: AppliedChangeSet = {
       intent: 'writeGloss',
       tokenAnalysisLinks: { puts: [], deletes: [link.id] },
     };
     const inverse: ChangeSet = {
       intent: 'writeGloss',
-      tokenAnalysisLinks: { puts: [link], deletes: [] },
+      tokenAnalysisLinks: creating([link]),
     };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
 
-    expect(change.forms).toStrictEqual(['created']);
+    expect(change.forms).toStrictEqual(['fell']);
   });
 
   it('names where a moved link was and where it went, joining neighboring segments into one range', async () => {
     const before = makeTokenLink('ta-a', ref('In'), { id: 'tl' });
-    const after = makeTokenLink('ta-b', ref('God'), { id: 'tl' });
+    const after = makeTokenLink('ta-b', ref('Rain'), { id: 'tl' });
     const elsewhere = makeTokenLink('ta-c', ref('light'));
-    const changes: ChangeSet = {
+    const changes: AppliedChangeSet = {
       intent: 'move',
       tokenAnalysisLinks: { puts: [after, elsewhere], deletes: [] },
     };
     const inverse: ChangeSet = {
       intent: 'move',
-      tokenAnalysisLinks: { puts: [before], deletes: [elsewhere.id] },
+      tokenAnalysisLinks: updating({ before: after, after: before }),
     };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
@@ -94,10 +96,12 @@ describe('describeChange', () => {
 
   it('names a book the host holds no outline for whole', async () => {
     const link = makeTokenLink('ta', 'EXO 1:1:0');
-    const changes: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+    const changes: AppliedChangeSet = {
+      intent: 'x',
+      tokenAnalysisLinks: { puts: [link], deletes: [] },
+    };
     const inverse: ChangeSet = {
       intent: 'x',
-      tokenAnalysisLinks: { puts: [], deletes: [link.id] },
     };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
@@ -106,21 +110,23 @@ describe('describeChange', () => {
   });
 
   it('names whole each book whose boundaries the change moved, and only those', async () => {
-    const scope = emptyDraft('src');
+    const scope = scopeRecordOf(emptyDraft('src'));
     const split = {
       removedVerseStarts: ['EXO 1:2:0'],
-      addedStarts: [{ tokenRef: ref('created'), surfaceText: 'created' }],
+      addedStarts: [{ tokenRef: ref('fell'), surfaceText: 'fell' }],
     };
     const link = makeTokenLink('ta', ref('In'));
-    const changes: ChangeSet = {
+    const changes: AppliedChangeSet = {
       intent: 'splitSegment',
       scope: { ...scope, segmentation: split },
       tokenAnalysisLinks: { puts: [link], deletes: [] },
     };
     const inverse: ChangeSet = {
       intent: 'splitSegment',
-      scope: { ...scope, segmentation: { removedVerseStarts: ['EXO 1:2:0'], addedStarts: [] } },
-      tokenAnalysisLinks: { puts: [], deletes: [link.id] },
+      scope: {
+        before: { ...scope, segmentation: split },
+        after: { ...scope, segmentation: { removedVerseStarts: ['EXO 1:2:0'], addedStarts: [] } },
+      },
     };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
@@ -130,11 +136,11 @@ describe('describeChange', () => {
 
   it('names a link on a token the text no longer holds nowhere', async () => {
     const link = makeTokenLink('ta', 'GEN 1:9:0', { status: 'stale' });
-    const changes: ChangeSet = {
+    const changes: AppliedChangeSet = {
       intent: 'x',
       tokenAnalysisLinks: { puts: [], deletes: [link.id] },
     };
-    const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+    const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: creating([link]) };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
 
@@ -143,10 +149,13 @@ describe('describeChange', () => {
 
   it("names the segment of each of a phrase link's tokens", async () => {
     const link = makePhraseLink('pl', [ref('beginning'), ref('light')]);
-    const changes: ChangeSet = { intent: 'x', phraseAnalysisLinks: { puts: [link], deletes: [] } };
+    const changes: AppliedChangeSet = {
+      intent: 'x',
+      phraseAnalysisLinks: { puts: [link], deletes: [] },
+    };
     const inverse: ChangeSet = {
       intent: 'x',
-      phraseAnalysisLinks: { puts: [], deletes: [link.id] },
+      phraseAnalysisLinks: creating([]),
     };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
@@ -168,16 +177,15 @@ describe('describeChange', () => {
   });
 
   it('names a payload change by its analysis alone', async () => {
-    const changes: ChangeSet = {
+    const changes: AppliedChangeSet = {
       intent: 'writeAnalysisGloss',
-      tokenAnalyses: { puts: [{ id: 'ta', ...FIXTURE_STAMPS, surfaceText: 'God' }], deletes: [] },
+      tokenAnalyses: { puts: [{ id: 'ta', ...FIXTURE_STAMPS, surfaceText: 'Rain' }], deletes: [] },
     };
     const inverse: ChangeSet = {
       intent: 'writeAnalysisGloss',
-      tokenAnalyses: {
-        puts: [{ id: 'ta', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'x' } }],
-        deletes: [],
-      },
+      tokenAnalyses: creating([
+        { id: 'ta', ...FIXTURE_STAMPS, surfaceText: 'Rain', gloss: { en: 'x' } },
+      ]),
     };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
@@ -185,7 +193,7 @@ describe('describeChange', () => {
     expect(change).toStrictEqual({
       books: [],
       analysisIds: ['ta'],
-      forms: ['god'],
+      forms: ['rain'],
       queries: ['getCatalogRows', 'getConcordance'],
     });
   });
@@ -199,13 +207,13 @@ describe('describeChange', () => {
         status,
         ...FIXTURE_STAMPS,
       };
-      const changes: ChangeSet = {
+      const changes: AppliedChangeSet = {
         intent: 'x',
         segmentAnalysisLinks: { puts: [], deletes: ['sl'] },
       };
       const inverse: ChangeSet = {
         intent: 'x',
-        segmentAnalysisLinks: { puts: [link], deletes: [] },
+        segmentAnalysisLinks: creating([link]),
       };
       return (await describeChange(await repositoryOver(), { changes, inverse }, held)).books;
     }
@@ -249,13 +257,13 @@ describe('describeChange', () => {
         status: 'stale' as const,
         ...FIXTURE_STAMPS,
       };
-      const changes: ChangeSet = {
+      const changes: AppliedChangeSet = {
         intent: 'x',
         segmentAnalysisLinks: { puts: [link], deletes: [] },
       };
       const inverse: ChangeSet = {
         intent: 'x',
-        segmentAnalysisLinks: { puts: [], deletes: ['sl'] },
+        segmentAnalysisLinks: creating([]),
       };
 
       const change = await describeChange(
@@ -270,12 +278,12 @@ describe('describeChange', () => {
 
   describe('the stale summary', () => {
     it('is named when a link was or becomes stale', async () => {
-      const link = makeTokenLink('ta', ref('God'));
-      const changes: ChangeSet = {
+      const link = makeTokenLink('ta', ref('Rain'));
+      const changes: AppliedChangeSet = {
         intent: 'x',
         tokenAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
       };
-      const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+      const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: creating([link]) };
 
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
 
@@ -283,12 +291,12 @@ describe('describeChange', () => {
     });
 
     it('leaves the book unflagged for a stale token link, which places no translation', async () => {
-      const link = makeTokenLink('ta', ref('God'));
-      const changes: ChangeSet = {
+      const link = makeTokenLink('ta', ref('Rain'));
+      const changes: AppliedChangeSet = {
         intent: 'x',
         tokenAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
       };
-      const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+      const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: creating([link]) };
 
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
 
@@ -296,13 +304,16 @@ describe('describeChange', () => {
     });
 
     it('is named when the change moved boundaries, which can move where a stale translation shows', async () => {
-      const scope = emptyDraft('src');
-      const merged = { removedVerseStarts: [ref('God')], addedStarts: [] };
-      const changes: ChangeSet = {
+      const scope = scopeRecordOf(emptyDraft('src'));
+      const merged = { removedVerseStarts: [ref('Rain')], addedStarts: [] };
+      const changes: AppliedChangeSet = {
         intent: 'mergeSegments',
         scope: { ...scope, segmentation: merged },
       };
-      const inverse: ChangeSet = { intent: 'mergeSegments', scope };
+      const inverse: ChangeSet = {
+        intent: 'mergeSegments',
+        scope: { before: { ...scope, segmentation: merged }, after: scope },
+      };
 
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
 
@@ -310,12 +321,12 @@ describe('describeChange', () => {
     });
 
     it('flags the book of a stale token link that the change put or removed', async () => {
-      const link = makeTokenLink('ta', ref('God'));
-      const changes: ChangeSet = {
+      const link = makeTokenLink('ta', ref('Rain'));
+      const changes: AppliedChangeSet = {
         intent: 'x',
         tokenAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
       };
-      const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+      const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: creating([link]) };
 
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
 
@@ -325,14 +336,14 @@ describe('describeChange', () => {
     });
 
     it('flags the book of a stale phrase link that the change put', async () => {
-      const link = makePhraseLink('pl', [ref('created'), ref('the')]);
-      const changes: ChangeSet = {
+      const link = makePhraseLink('pl', [ref('fell'), ref('the')]);
+      const changes: AppliedChangeSet = {
         intent: 'x',
         phraseAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
       };
       const inverse: ChangeSet = {
         intent: 'x',
-        phraseAnalysisLinks: { puts: [link], deletes: [] },
+        phraseAnalysisLinks: creating([link]),
       };
 
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
@@ -343,14 +354,14 @@ describe('describeChange', () => {
     });
 
     it('flags the book of a stale phrase link that the change removed', async () => {
-      const link = makePhraseLink('pl', [ref('created'), ref('the')]);
-      const changes: ChangeSet = {
+      const link = makePhraseLink('pl', [ref('fell'), ref('the')]);
+      const changes: AppliedChangeSet = {
         intent: 'x',
         phraseAnalysisLinks: { puts: [link], deletes: [] },
       };
       const inverse: ChangeSet = {
         intent: 'x',
-        phraseAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
+        phraseAnalysisLinks: creating([{ ...link, status: 'stale' }]),
       };
 
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
@@ -361,20 +372,20 @@ describe('describeChange', () => {
     });
 
     it('is named when a phrase payload a stale link names changes', async () => {
-      const phrasePayload = { id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'created the' };
+      const phrasePayload = { id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'fell the' };
       const repository = await repositoryOver({
         phraseAnalyses: [phrasePayload],
         phraseAnalysisLinks: [
-          { ...makePhraseLink('pa', [ref('created'), ref('the')]), status: 'stale' },
+          { ...makePhraseLink('pa', [ref('fell'), ref('the')]), status: 'stale' },
         ],
       });
-      const changes: ChangeSet = {
+      const changes: AppliedChangeSet = {
         intent: 'x',
         phraseAnalyses: { puts: [{ ...phrasePayload, gloss: { en: 'y' } }], deletes: [] },
       };
       const inverse: ChangeSet = {
         intent: 'x',
-        phraseAnalyses: { puts: [phrasePayload], deletes: [] },
+        phraseAnalyses: creating([phrasePayload]),
       };
 
       const change = await describeChange(repository, { changes, inverse }, held);
@@ -383,11 +394,13 @@ describe('describeChange', () => {
     });
 
     it('leaves the book unflagged for glosses when no stale token link changed', async () => {
-      const link = makeTokenLink('ta', ref('God'));
-      const changes: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+      const link = makeTokenLink('ta', ref('Rain'));
+      const changes: AppliedChangeSet = {
+        intent: 'x',
+        tokenAnalysisLinks: { puts: [link], deletes: [] },
+      };
       const inverse: ChangeSet = {
         intent: 'x',
-        tokenAnalysisLinks: { puts: [], deletes: [link.id] },
       };
 
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
@@ -398,14 +411,14 @@ describe('describeChange', () => {
     });
 
     it('is named when a payload a stale link names changes', async () => {
-      const segmentPayload = { id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'God created' };
+      const segmentPayload = { id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'Rain fell' };
       const repository = await repositoryOver({
         segmentAnalyses: [segmentPayload],
         segmentAnalysisLinks: [
           { id: 'sl', analysisId: 'sa', segmentId: 'GEN 1:2', status: 'stale', ...FIXTURE_STAMPS },
         ],
       });
-      const changes: ChangeSet = {
+      const changes: AppliedChangeSet = {
         intent: 'x',
         segmentAnalyses: {
           puts: [{ ...segmentPayload, freeTranslation: { en: 'y' } }],
@@ -414,7 +427,7 @@ describe('describeChange', () => {
       };
       const inverse: ChangeSet = {
         intent: 'x',
-        segmentAnalyses: { puts: [segmentPayload], deletes: [] },
+        segmentAnalyses: creating([segmentPayload]),
       };
 
       const change = await describeChange(repository, { changes, inverse }, held);
@@ -423,7 +436,7 @@ describe('describeChange', () => {
     });
 
     it('is not named for a change no stale link reaches', async () => {
-      const segmentPayload = { id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'God created' };
+      const segmentPayload = { id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'Rain fell' };
       const repository = await repositoryOver({
         segmentAnalyses: [segmentPayload],
         segmentAnalysisLinks: [
@@ -436,7 +449,7 @@ describe('describeChange', () => {
           },
         ],
       });
-      const changes: ChangeSet = {
+      const changes: AppliedChangeSet = {
         intent: 'x',
         segmentAnalyses: {
           puts: [{ ...segmentPayload, freeTranslation: { en: 'y' } }],
@@ -445,7 +458,7 @@ describe('describeChange', () => {
       };
       const inverse: ChangeSet = {
         intent: 'x',
-        segmentAnalyses: { puts: [segmentPayload], deletes: [] },
+        segmentAnalyses: creating([segmentPayload]),
       };
 
       const change = await describeChange(repository, { changes, inverse }, held);

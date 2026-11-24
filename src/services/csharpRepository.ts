@@ -14,6 +14,7 @@ import type {
   ApprovalsByForm,
   AnalysisRepository,
   ApplyResult,
+  AppliedChangeSet,
   ChangeSet,
   DraftExport,
   DraftState,
@@ -32,15 +33,18 @@ export type CommandSender = <T>(command: string, args: object) => Promise<T>;
 /** Each command's name is this, then the repository method it serves. */
 export const REPOSITORY_COMMAND_PREFIX = 'interlinearizer.repository.';
 
+/** The line the host writes once it has registered its commands. */
+export const HOST_READY_LINE = 'Interlinearizer host ready';
+
 /**
  * The C# host's slice of {@link AnalysisRepository}, reached one command per method. Every command
  * names the source project the host has open and the interlinear project in it, which the host must
  * already store. Every record id must be a GUID string, as the host stores ids.
  *
  * The scope's record and the unsaved mark are not stored yet. An apply refuses a change set
- * carrying a scope. It reports an inverse that restores nothing, and the draft as clean. What it
- * reports as applied carries each put as the host stored it, timestamps included. The calls that
- * read the scope or clear the mark throw, as do those that copy or replace the draft whole.
+ * carrying a scope. It reports the draft as clean. What it reports as applied carries each record
+ * as the host stored it, timestamps included. The calls that read the scope or clear the mark
+ * throw, as do those that copy or replace the draft whole.
  */
 export class CSharpRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };
@@ -78,8 +82,8 @@ export class CSharpRepository implements AnalysisRepository {
         `The C# host stores no scope record for ${this.projectId}: the change set must not carry one`,
       );
     }
-    const applied = await this.command<ChangeSet>('apply', { changes });
-    return { inverse: { intent: changes.intent }, applied, wasDirty: false };
+    const applied = await this.command<AppliedChangeSet>('apply', { changes });
+    return { applied, wasDirty: false };
   }
 
   async getWholeDraft(): Promise<DraftProject> {

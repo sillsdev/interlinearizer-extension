@@ -378,8 +378,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Applies the changes to the draft this instance keeps. When it keeps none, the draft comes from
-   * what {@link exportAll} loaded since the last whole save, or else from storage. Rewrites only the
+   * Applies the changes to the draft this instance keeps. An update writes only the fields that
+   * differ between its `before` and its `after`. When it keeps none, the draft comes from what
+   * {@link exportAll} loaded since the last whole save, or else from storage. Rewrites only the
    * books whose content the changes alter, so an edit to a payload rewrites every book linking it.
    * A draft loaded inline is written whole. Marks the draft unsaved unless `options` keeps the
    * mark.
@@ -392,10 +393,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * {@link checkIndexes} still reports such a book.
    *
    * What an apply stores matches a whole save of the same draft in content, not order. The manifest
-   * may list the books in another order, and a link that a put moves into a book comes last in that
-   * book's shard.
+   * may list the books in another order, and a link that an update moves into a book comes last in
+   * that book's shard.
    *
-   * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
+   * @throws {Error} If an id appears more than once in one record kind's changes, an update's
+   *   `before` and `after` name different ids, a create names a stored record's id, or the scope's
    *   record names another source project; nothing is written.
    * @throws {Error} If the changes reach a book whose shard could not be read; nothing is written.
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
@@ -405,7 +407,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   async apply(changes: ChangeSet, options?: ApplyOptions): Promise<ApplyResult> {
     const { draft: base, index } = await this.indexed();
     const copied = jsonCopy(changes);
-    const { draft: changed, inverse, applied } = applyChangeSet(base, copied);
+    const { draft: changed, applied } = applyChangeSet(base, copied);
     const draft = options?.keepDirty ? { ...changed, dirty: base.dirty } : changed;
     const reached = index.reach(applied);
     const storedBooks = await perfTimeAsync('saveDraft:read', () =>
@@ -433,7 +435,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     }
     this.current = { draft, index };
     this.anchored = anchored;
-    return { inverse, applied: jsonCopy(applied), wasDirty: base.dirty };
+    return { applied: jsonCopy(applied), wasDirty: base.dirty };
   }
 
   /**

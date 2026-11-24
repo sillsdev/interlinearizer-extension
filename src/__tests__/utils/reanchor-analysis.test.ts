@@ -15,7 +15,14 @@ import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import { mergeSegments, reanchorSegmentation } from '../../utils/segmentation';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { expectHostReanchor } from '../host-reanchor';
-import { makeVerseBook, makePhraseLink, makeTokenLink, FIXTURE_STAMPS } from '../test-helpers';
+import {
+  creating,
+  FIXTURE_STAMPS,
+  makePhraseLink,
+  makeTokenLink,
+  makeVerseBook,
+  updating,
+} from '../test-helpers';
 
 /**
  * The stamp a re-anchor writes in these tests. Distinct from `FIXTURE_STAMPS` so an assertion on
@@ -1802,33 +1809,46 @@ describe('withFormCounts', () => {
   const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'wug blicket wug' }]);
   const linking = (link: TokenAnalysisLink): ChangeSet => ({
     intent: 'link',
-    tokenAnalysisLinks: { puts: [link], deletes: [] },
+    tokenAnalysisLinks: creating([link]),
   });
 
-  it('counts the form of a token link it puts among its verse’s tokens', () => {
+  it('counts the form of a token link it creates among its verse’s tokens', () => {
     const changes = linking(makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'Wug' }));
 
     const counted = withFormCounts(changes, () => book);
 
-    expect(counted.tokenAnalysisLinks?.puts[0].token).toStrictEqual({
+    expect(counted.tokenAnalysisLinks?.creates[0].token).toStrictEqual({
       tokenRef: 'GEN 1:1:12',
       surfaceText: 'Wug',
       formCount: 2,
     });
   });
 
+  it('counts the form of a token link as an update leaves it, keeping the link as read', () => {
+    const read = makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' });
+    const moved = makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'Wug' });
+
+    const counted = withFormCounts(
+      { intent: 'move', tokenAnalysisLinks: updating({ before: read, after: moved }) },
+      () => book,
+    );
+
+    expect(counted.tokenAnalysisLinks?.updates).toStrictEqual([
+      { before: read, after: { ...moved, token: { ...moved.token, formCount: 2 } } },
+    ]);
+  });
+
   it('counts the form of each token of a phrase link it puts', () => {
     const changes: ChangeSet = {
       intent: 'link',
-      phraseAnalysisLinks: {
-        puts: [makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:4'], ['wug', 'blicket'])],
-        deletes: [],
-      },
+      phraseAnalysisLinks: creating([
+        makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:4'], ['wug', 'blicket']),
+      ]),
     };
 
     const counted = withFormCounts(changes, () => book);
 
-    expect(counted.phraseAnalysisLinks?.puts[0].tokens.map((t) => t.formCount)).toEqual([2, 1]);
+    expect(counted.phraseAnalysisLinks?.creates[0].tokens.map((t) => t.formCount)).toEqual([2, 1]);
   });
 
   it('keeps a count the snapshot already records', () => {
@@ -1861,13 +1881,10 @@ describe('withFormCounts', () => {
     const bookOf = jest.fn(() => book);
     const changes: ChangeSet = {
       intent: 'link',
-      tokenAnalysisLinks: {
-        puts: [
-          makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' }),
-          makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug' }),
-        ],
-        deletes: [],
-      },
+      tokenAnalysisLinks: creating([
+        makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' }),
+        makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug' }),
+      ]),
     };
 
     withFormCounts(changes, bookOf);

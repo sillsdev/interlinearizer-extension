@@ -26,7 +26,9 @@ import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import {
+  creating,
   FIXTURE_STAMPS,
+  updating,
   makeStubProject,
   makeTokenLink,
   makeVerseBook,
@@ -626,7 +628,7 @@ describe('AnalysisSessions', () => {
   describe('undo and redo', () => {
     const putting = (id: string) => ({
       intent: `put ${id}`,
-      tokenAnalyses: { puts: [{ id, ...FIXTURE_STAMPS, surfaceText: id }], deletes: [] },
+      tokenAnalyses: creating([{ id, ...FIXTURE_STAMPS, surfaceText: id }]),
     });
 
     /** The ids of the token payloads the source project's stored draft holds. */
@@ -644,7 +646,12 @@ describe('AnalysisSessions', () => {
         changes: { intent: 'put a', tokenAnalyses: { puts: [], deletes: ['a'] } },
       });
       await expect(storedIds(storage)).resolves.toStrictEqual([]);
-      await expect(sessions.redo(sessionId)).resolves.toMatchObject({ changes: putting('a') });
+      await expect(sessions.redo(sessionId)).resolves.toMatchObject({
+        changes: {
+          intent: 'put a',
+          tokenAnalyses: { puts: [{ id: 'a', ...FIXTURE_STAMPS, surfaceText: 'a' }], deletes: [] },
+        },
+      });
       await expect(storedIds(storage)).resolves.toStrictEqual(['a']);
     });
 
@@ -1153,7 +1160,7 @@ describe('AnalysisSessions', () => {
       const { sessions } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);
       await sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'), {
-        step: (changes) => ({ location: changes.tokenAnalysisLinks?.puts[0].token.tokenRef }),
+        step: (changes) => ({ location: changes.tokenAnalysisLinks?.creates[0].token.tokenRef }),
       });
 
       await expect(sessions.undo(sessionId)).resolves.toMatchObject({
@@ -1167,7 +1174,7 @@ describe('AnalysisSessions', () => {
 
       await expect(
         sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'), {
-          step: (changes) => ({ location: changes.tokenAnalysisLinks?.puts[0].token.tokenRef }),
+          step: (changes) => ({ location: changes.tokenAnalysisLinks?.creates[0].token.tokenRef }),
         }),
       ).resolves.toMatchObject({ step: { location: 'GEN 1:1:0' } });
     });
@@ -1553,7 +1560,7 @@ describe('AnalysisSessions', () => {
 
       expect(changes).toStrictEqual({
         intent: 'add',
-        tokenAnalyses: { puts: [payload('a')], deletes: [] },
+        tokenAnalyses: creating([payload('a')]),
       });
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
       await expect(
@@ -1783,7 +1790,10 @@ describe('AnalysisSessions', () => {
       const { sessions, sessionId, storage } = await sessionGlossingBeta();
       const relinking = (analysisId: string) => ({
         intent: `link ${analysisId}`,
-        tokenAnalysisLinks: { puts: [betaLink(BEFORE, analysisId)], deletes: [] },
+        tokenAnalysisLinks: updating({
+          before: betaLink(BEFORE, 'ta-1'),
+          after: betaLink(BEFORE, analysisId),
+        }),
       });
       await sessions.runEdit(sessionId, (session) => session.history.apply(relinking('ta-2')));
       await sessions.reanchorBook(SOURCE, AFTER);
@@ -1803,7 +1813,7 @@ describe('AnalysisSessions', () => {
 
       const { changes } = await sessions.edit(sessionId, 'relink', async (buffer) => {
         buffer.create('tokenAnalyses', { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'beta' });
-        buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
+        buffer.update('tokenAnalysisLinks', betaLink(BEFORE, 'ta-1'), betaLink(BEFORE, 'ta-2'));
         return { reanchorTo: [AFTER] };
       });
 
@@ -1825,6 +1835,7 @@ describe('AnalysisSessions', () => {
 
       await sessions.edit(sessionId, 'relink', async (buffer) => {
         buffer.create('tokenAnalyses', { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'beta' });
+        await buffer.findLinksInBooks(['GEN']);
         buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
         return { reanchorTo: books };
       });
@@ -2183,6 +2194,7 @@ describe('AnalysisSessions', () => {
        */
       async function relinkingBeta(buffer: ChangeBuffer) {
         buffer.create('tokenAnalyses', { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'beta' });
+        await buffer.findLinksInBooks(['GEN']);
         buffer.put('tokenAnalysisLinks', betaLink(AFTER, 'ta-2'));
         return { reanchorTo: [BEFORE] };
       }

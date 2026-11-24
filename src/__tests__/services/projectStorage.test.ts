@@ -38,6 +38,8 @@ import { UnreadableBooksError } from '../../types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import {
   createTestActivationContext,
+  creating,
+  deleting,
   enoentError,
   FIXTURE_STAMPS,
   makeStubProject,
@@ -95,13 +97,23 @@ function makeDraftSpanningBooks(sourceProjectId: string, ...bookCodes: string[])
   return draft;
 }
 
-/** The changes that put `bookCode`'s analysis and link from {@link makeDraftSpanningBooks}. */
+/** The changes that create `bookCode`'s analysis and link from {@link makeDraftSpanningBooks}. */
 function bookPuts(bookCode: string): ChangeSet {
   const { analysis } = makeDraftSpanningBooks('src-proj', bookCode);
   return {
     intent: 'edit',
-    tokenAnalyses: { puts: analysis.tokenAnalyses, deletes: [] },
-    tokenAnalysisLinks: { puts: analysis.tokenAnalysisLinks, deletes: [] },
+    tokenAnalyses: creating(analysis.tokenAnalyses),
+    tokenAnalysisLinks: creating(analysis.tokenAnalysisLinks),
+  };
+}
+
+/** The changes that delete `bookCode`'s analysis and link from {@link makeDraftSpanningBooks}. */
+function bookDeletes(intent: string, bookCode: string): ChangeSet {
+  const { analysis } = makeDraftSpanningBooks('src-proj', bookCode);
+  return {
+    intent,
+    tokenAnalyses: deleting(analysis.tokenAnalyses),
+    tokenAnalysisLinks: deleting(analysis.tokenAnalysisLinks),
   };
 }
 
@@ -1935,11 +1947,7 @@ describe('projectStorage', () => {
 
       it('keeps refusing after discarding all changes, since the damaged book is still stored', async () => {
         const { stored, project } = await damagedJhn();
-        await applyToDraft({
-          intent: 'discardAll',
-          tokenAnalyses: { puts: [], deletes: ['analysis-GEN'] },
-          tokenAnalysisLinks: { puts: [], deletes: ['link-GEN'] },
-        });
+        await applyToDraft(bookDeletes('discardAll', 'GEN'));
 
         await expect(saveDraftToProject(token, 'src-proj', 'proj-id')).rejects.toThrow(
           UnreadableBooksError,
@@ -2052,7 +2060,9 @@ describe('projectStorage', () => {
         const save = saveDraftToProject(token, 'src-proj', 'proj-id');
         const apply = openDraftRepository(token, 'src-proj').apply({
           intent: 'deleteLink',
-          tokenAnalysisLinks: { puts: [], deletes: ['link-GEN'] },
+          tokenAnalysisLinks: deleting(
+            makeDraftSpanningBooks('src-proj', 'GEN').analysis.tokenAnalysisLinks,
+          ),
         });
         await Promise.all([save, apply]);
 
@@ -2162,7 +2172,7 @@ describe('projectStorage', () => {
           const stored = backStorageWithMap();
           storeListedProject(stored, makeStubProject('proj-id'));
           await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
-          await applyToDraft(bookPuts('GEN'));
+          await applyToDraft({ intent: 'edit' });
           const writeThrough = __mockWriteUserData.getMockImplementation();
           __mockWriteUserData.mockImplementation(
             async (t: unknown, key: unknown, json: unknown) => {
@@ -2172,8 +2182,8 @@ describe('projectStorage', () => {
           );
           const exoAndLev = bookPuts('EXO');
           const lev = makeDraftSpanningBooks('src-proj', 'LEV').analysis;
-          exoAndLev.tokenAnalyses?.puts.push(...lev.tokenAnalyses);
-          exoAndLev.tokenAnalysisLinks?.puts.push(...lev.tokenAnalysisLinks);
+          exoAndLev.tokenAnalyses?.creates.push(...lev.tokenAnalyses);
+          exoAndLev.tokenAnalysisLinks?.creates.push(...lev.tokenAnalysisLinks);
           await expect(applyToDraft(exoAndLev)).rejects.toThrow('disk full');
           __mockWriteUserData.mockImplementation(writeThrough);
           __mockReadUserData.mockClear();
@@ -2360,7 +2370,7 @@ describe('projectStorage', () => {
 
       await openDraftRepository(token, 'src-proj').apply({
         intent: 'putLink',
-        tokenAnalysisLinks: { puts: [added], deletes: [] },
+        tokenAnalysisLinks: creating([added]),
       });
 
       await expect(readStoredDraft(token, 'src-proj')).resolves.toMatchObject({
@@ -2418,7 +2428,9 @@ describe('projectStorage', () => {
 
       await openDraftRepository(token, 'src-proj').apply({
         intent: 'deleteLink',
-        tokenAnalysisLinks: { puts: [], deletes: ['link-GEN'] },
+        tokenAnalysisLinks: deleting(
+          makeDraftSpanningBooks('src-proj', 'GEN').analysis.tokenAnalysisLinks,
+        ),
       });
 
       const {

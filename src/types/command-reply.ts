@@ -1,5 +1,5 @@
 import type { ChangeId } from 'interlinearizer';
-import type { ChangeSet } from './analysis-repository';
+import type { AppliedChangeSet } from './analysis-repository';
 import type { EditStep } from './edit-step';
 import type { PoolRead } from './segment-pages';
 
@@ -12,7 +12,7 @@ import type { PoolRead } from './segment-pages';
 export type CommandReply = {
   changeId: ChangeId;
   /** The changes applied, naming the edit's intent. */
-  changes: ChangeSet;
+  changes: AppliedChangeSet;
   /** The books whose boundaries the changes moved. */
   resegmentedBooks: string[];
   /** The books in which the changes put or removed a stale free translation that the view places. */

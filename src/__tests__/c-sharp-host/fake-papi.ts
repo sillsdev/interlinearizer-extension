@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import { once } from 'events';
 import path from 'path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { HOST_READY_LINE } from '../../services/csharpHost';
+import { HOST_READY_LINE } from '../../services/csharpRepository';
 
 /** The host published for this machine, as `npm run build:c-sharp` lays it out. */
 export function publishedHostExecutable(): string {

@@ -61,10 +61,24 @@ public abstract class CrdtTestBase : IAsyncDisposable
     protected InterlinearProjects Projects => new(DataModel, DbContext, new ClientIdentity(ClientId));
 
     /// <summary>Applies through the repository at the next commit time, returning what the apply reports.</summary>
-    protected Task<ChangeSet> ApplyNext(ChangeSet changes, PutMode putMode = PutMode.Replace)
+    protected Task<AppliedChangeSet> ApplyNext(ChangeSet changes) => ApplyAt(NextDate(), changes);
+
+    /// <summary>
+    /// Applies through the repository at <paramref name="dateTime"/>, which may be earlier than
+    /// commits already made, as a commit a sync delivers late would be.
+    /// </summary>
+    protected async Task<AppliedChangeSet> ApplyAt(DateTimeOffset dateTime, ChangeSet changes)
     {
-        _timeProvider.SetNextDateTime(NextDate());
-        return Repository.Apply(changes, putMode);
+        // An apply may roll back its commit and redo it; the redo keeps this date.
+        _timeProvider.HoldDateTime(dateTime);
+        try
+        {
+            return await Repository.Apply(changes);
+        }
+        finally
+        {
+            _timeProvider.ClearNextDateTime();
+        }
     }
 
     /// <summary>The time the next commit will be made at, one day after the last.</summary>
@@ -97,11 +111,26 @@ public abstract class CrdtTestBase : IAsyncDisposable
 
         public void SetNextDateTime(DateTimeOffset dateTime) => _next = new HybridDateTime(dateTime, 0);
 
+        private bool _holdNext;
+
+        /// <summary>Dates every commit at <paramref name="dateTime"/> until <see cref="ClearNextDateTime"/>.</summary>
+        public void HoldDateTime(DateTimeOffset dateTime)
+        {
+            _next = new HybridDateTime(dateTime, 0);
+            _holdNext = true;
+        }
+
+        public void ClearNextDateTime()
+        {
+            _next = null;
+            _holdNext = false;
+        }
+
         public HybridDateTime GetDateTime()
         {
             if (_next is null) return new HybridDateTime(DateTimeOffset.UtcNow, 0);
             var result = _next;
-            _next = null;
+            if (!_holdNext) _next = null;
             return result;
         }
 

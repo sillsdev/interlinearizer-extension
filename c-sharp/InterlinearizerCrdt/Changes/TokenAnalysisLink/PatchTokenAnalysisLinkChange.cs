@@ -15,17 +15,17 @@ public class PatchTokenAnalysisLinkChange(Guid entityId)
     : EditChange<TokenAnalysisLink>(entityId), ISelfNamedType<PatchTokenAnalysisLinkChange>
 {
     /// <summary>
-    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// The patch that takes <paramref name="before"/> to <paramref name="after"/>, timestamps
     /// aside; null when nothing differs.
     /// </summary>
-    public static PatchTokenAnalysisLinkChange? Diff(TokenAnalysisLink stored, TokenAnalysisLink put)
+    public static PatchTokenAnalysisLinkChange? Diff(TokenAnalysisLink before, TokenAnalysisLink after)
     {
-        var patch = new PatchTokenAnalysisLinkChange(put.Id)
+        var patch = new PatchTokenAnalysisLinkChange(after.Id)
         {
-            AnalysisId = Patches.Changed(stored.AnalysisId, put.AnalysisId) ? new(put.AnalysisId) : default,
-            Token = Patches.Changed(stored.Token, put.Token) ? new(put.Token) : default,
-            Status = Patches.Changed(stored.Status, put.Status) ? new(put.Status) : default,
-            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
+            AnalysisId = Patches.Changed(before.AnalysisId, after.AnalysisId) ? new(after.AnalysisId) : default,
+            Token = Patches.Changed(before.Token, after.Token) ? new(after.Token) : default,
+            Status = Patches.Changed(before.Status, after.Status) ? new(after.Status) : default,
+            Confidence = Patches.Changed(before.Confidence, after.Confidence) ? new(after.Confidence) : default,
         };
         return patch.IsEmpty ? null : patch;
     }

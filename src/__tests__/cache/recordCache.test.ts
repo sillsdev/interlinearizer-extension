@@ -157,6 +157,7 @@ describe('RecordCache with phrases and stale translations', () => {
     cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reshaped = await edit('reshape', async (buffer) => {
+      await buffer.getPhraseAnalysisLinks(['pl']);
       buffer.put('phraseAnalysisLinks', phrase([ref('earth'), ref('said')]));
     });
     const removed = await edit('remove', async (buffer) => {
@@ -174,6 +175,7 @@ describe('RecordCache with phrases and stale translations', () => {
     cache.absorb(await fetchPage(0, 1), cache.beginFetch());
 
     const reply = await edit('reshape', async (buffer) => {
+      await buffer.getPhraseAnalysisLinks(['pl']);
       buffer.put('phraseAnalysisLinks', phrase([ref('In'), ref('said')]));
     });
 

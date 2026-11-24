@@ -36,24 +36,6 @@ public class PhraseAnalysisTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ReplaceOverwritesEveryFieldButIdentityAndCreation()
-    {
-        var created = await WriteNextChange(Fixtures.CreatePhraseAnalysis(_analysisId));
-        var change = Fixtures.ReplacePhraseAnalysis(_analysisId);
-        var replaced = await WriteNextChange(change);
-
-        var analysis = await DataModel.GetLatest<PhraseAnalysis>(_analysisId);
-        await Assert.That(analysis!.CreatedAt).IsEqualTo(created.DateTime);
-        await Assert.That(analysis.UpdatedAt).IsEqualTo(replaced.DateTime);
-        await Assert.That(analysis.SurfaceText).IsEqualTo(change.SurfaceText);
-        await Assert.That(analysis.Confidence).IsNull();
-        await Assert.That(analysis.Producer).IsNull();
-        await Assert.That(analysis.SourceUser).IsNull();
-        await Assert.That(analysis.Gloss).IsNull();
-        await Assert.That(analysis.SenseRef).IsEqualTo(change.SenseRef);
-    }
-
-    [Test]
     public async Task DeleteMarksTheAnalysisDeleted()
     {
         await WriteNextChange(Fixtures.CreatePhraseAnalysis(_analysisId));
@@ -92,27 +74,6 @@ public class PhraseAnalysisTests : CrdtTestBase
         var rows = await DataModel.QueryLatest<PhraseAnalysisLink>().ToListAsync();
         await Assert.That(rows).HasSingleItem();
         await Assert.That(rows[0].Tokens).IsEquivalentTo([Fixtures.Token1, Fixtures.Token2]);
-    }
-
-    [Test]
-    public async Task ReplaceLinkOverwritesEveryFieldButIdentityAndCreation()
-    {
-        var otherAnalysisId = Guid.NewGuid();
-        await WriteNextChange([
-            Fixtures.CreatePhraseAnalysis(_analysisId),
-            Fixtures.CreatePhraseAnalysis(otherAnalysisId),
-        ]);
-        var created = await WriteNextChange(Fixtures.CreatePhraseAnalysisLink(_linkId, _analysisId));
-        var change = Fixtures.ReplacePhraseAnalysisLink(_linkId, otherAnalysisId);
-        var replaced = await WriteNextChange(change);
-
-        var link = await DataModel.GetLatest<PhraseAnalysisLink>(_linkId);
-        await Assert.That(link!.CreatedAt).IsEqualTo(created.DateTime);
-        await Assert.That(link.UpdatedAt).IsEqualTo(replaced.DateTime);
-        await Assert.That(link.AnalysisId).IsEqualTo(otherAnalysisId);
-        await Assert.That(link.Status).IsEqualTo(change.Status);
-        await Assert.That(link.Confidence).IsNull();
-        await Assert.That(link.Tokens).IsEquivalentTo(change.Tokens);
     }
 
     [Test]

@@ -13,23 +13,23 @@ public class PatchTokenAnalysisChange(Guid entityId)
     : EditChange<TokenAnalysis>(entityId), ISelfNamedType<PatchTokenAnalysisChange>
 {
     /// <summary>
-    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// The patch that takes <paramref name="before"/> to <paramref name="after"/>, timestamps
     /// aside; null when nothing differs.
     /// </summary>
-    public static PatchTokenAnalysisChange? Diff(TokenAnalysis stored, TokenAnalysis put)
+    public static PatchTokenAnalysisChange? Diff(TokenAnalysis before, TokenAnalysis after)
     {
-        var patch = new PatchTokenAnalysisChange(put.Id)
+        var patch = new PatchTokenAnalysisChange(after.Id)
         {
-            SurfaceText = Patches.Changed(stored.SurfaceText, put.SurfaceText) ? new(put.SurfaceText) : default,
-            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
-            Producer = Patches.Changed(stored.Producer, put.Producer) ? new(put.Producer) : default,
-            SourceUser = Patches.Changed(stored.SourceUser, put.SourceUser) ? new(put.SourceUser) : default,
-            MorphemesStale = Patches.Changed(stored.MorphemesStale, put.MorphemesStale) ? new(put.MorphemesStale) : default,
-            Pos = Patches.Changed(stored.Pos, put.Pos) ? new(put.Pos) : default,
-            GlossSenseRef = Patches.Changed(stored.GlossSenseRef, put.GlossSenseRef) ? new(put.GlossSenseRef) : default,
-            Morphemes = Patches.ListChanged(stored.Morphemes, put.Morphemes) ? new(put.Morphemes) : default,
-            Features = MultiStringPatch.Diff(stored.Features, put.Features),
-            Gloss = MultiStringPatch.Diff(stored.Gloss, put.Gloss),
+            SurfaceText = Patches.Changed(before.SurfaceText, after.SurfaceText) ? new(after.SurfaceText) : default,
+            Confidence = Patches.Changed(before.Confidence, after.Confidence) ? new(after.Confidence) : default,
+            Producer = Patches.Changed(before.Producer, after.Producer) ? new(after.Producer) : default,
+            SourceUser = Patches.Changed(before.SourceUser, after.SourceUser) ? new(after.SourceUser) : default,
+            MorphemesStale = Patches.Changed(before.MorphemesStale, after.MorphemesStale) ? new(after.MorphemesStale) : default,
+            Pos = Patches.Changed(before.Pos, after.Pos) ? new(after.Pos) : default,
+            GlossSenseRef = Patches.Changed(before.GlossSenseRef, after.GlossSenseRef) ? new(after.GlossSenseRef) : default,
+            Morphemes = Patches.ListChanged(before.Morphemes, after.Morphemes) ? new(after.Morphemes) : default,
+            Features = MultiStringPatch.Diff(before.Features, after.Features),
+            Gloss = MultiStringPatch.Diff(before.Gloss, after.Gloss),
         };
         return patch.IsEmpty ? null : patch;
     }

@@ -9,7 +9,7 @@ import type {
   TextAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
-import type { ChangeSet } from '../types/analysis-repository';
+import type { ChangeSet, RecordChanges } from '../types/analysis-repository';
 import { bookOfRef } from './analysis-book';
 import { normalizeSurfaceForm } from './analysis-identity';
 
@@ -544,8 +544,8 @@ export function reanchorSnapshots(snapshots: TokenSnapshot[], book: ReadonlyBook
 
 /**
  * Records a {@link TokenSnapshot.formCount} on each snapshot lacking one, in the token and phrase
- * links that `changes` put. A snapshot stays uncounted when `bookOf` holds no text for its verse,
- * or when its ref names a different word there.
+ * links that `changes` create or update. A snapshot stays uncounted when `bookOf` holds no text for
+ * its verse, or when its ref names a different word there.
  *
  * @returns `changes` itself when no snapshot took a count.
  */
@@ -572,20 +572,25 @@ export function withFormCounts(
     const formCount = tokens.filter((t) => normalizeSurfaceForm(t.surfaceText) === form).length;
     return { ...snapshot, formCount };
   };
+  const countedIn = <T>(links: RecordChanges<T>, countLink: (link: T) => T): RecordChanges<T> => ({
+    ...links,
+    creates: links.creates.map(countLink),
+    updates: links.updates.map(({ before, after }) => ({ before, after: countLink(after) })),
+  });
   const { tokenAnalysisLinks, phraseAnalysisLinks } = changes;
   const counts: ChangeSet = {
     ...changes,
     ...(tokenAnalysisLinks && {
-      tokenAnalysisLinks: {
-        ...tokenAnalysisLinks,
-        puts: tokenAnalysisLinks.puts.map((link) => ({ ...link, token: count(link.token) })),
-      },
+      tokenAnalysisLinks: countedIn(tokenAnalysisLinks, (link) => ({
+        ...link,
+        token: count(link.token),
+      })),
     }),
     ...(phraseAnalysisLinks && {
-      phraseAnalysisLinks: {
-        ...phraseAnalysisLinks,
-        puts: phraseAnalysisLinks.puts.map((link) => ({ ...link, tokens: link.tokens.map(count) })),
-      },
+      phraseAnalysisLinks: countedIn(phraseAnalysisLinks, (link) => ({
+        ...link,
+        tokens: link.tokens.map(count),
+      })),
     }),
   };
   return counted ? counts : changes;

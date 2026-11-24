@@ -41,9 +41,9 @@ import {
 } from '../../src/services/sessionPages';
 import { selectPoolIndex, selectStaleFreeTranslations } from '../../src/utils/analysis-selectors';
 import type {
-  ChangeSet,
+  AppliedChangeSet,
   KeyValueStorage,
-  RecordChanges,
+  AppliedRecords,
   WarningLogger,
 } from '../../src/types/analysis-repository';
 import type { CommandReply } from '../../src/types/command-reply';
@@ -532,7 +532,7 @@ function segmenter(books: ReadonlyMap<string, Book>) {
 
 /** The records `changes` put or deleted, as they stood before and as they stand after. */
 function versions<T extends { id: string }>(
-  changes: RecordChanges<T> | undefined,
+  changes: AppliedRecords<T> | undefined,
   before: readonly T[],
   after: readonly T[],
 ): T[] {
@@ -550,7 +550,7 @@ function versions<T extends { id: string }>(
  * and deletes reached, each where the view shows it before and after.
  */
 function expectedChange(
-  changes: ChangeSet,
+  changes: AppliedChangeSet,
   before: DraftProject,
   after: DraftProject,
   segmented: (bookId: string, delta: SegmentationDelta | undefined) => Book | undefined,
@@ -957,7 +957,7 @@ async function checkEvents(
       changeId = id;
       return send(id);
     });
-    const applied: ChangeSet | undefined = reply?.changes;
+    const applied: AppliedChangeSet | undefined = reply?.changes;
     if (stalePage && !applied?.scope) {
       client.absorb(stalePage, fetch);
       races += 1;

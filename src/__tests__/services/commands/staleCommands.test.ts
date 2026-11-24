@@ -10,7 +10,13 @@ import {
 } from '../../../services/commands/staleCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
+import {
+  asPuts,
+  FIXTURE_STAMPS,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
@@ -83,6 +89,6 @@ describe('stale commands over records that are not stale', () => {
 
     await command(buffer);
 
-    expect(buffer.toChangeSet(intent)).toStrictEqual({ intent });
+    expect(asPuts(buffer.toChangeSet(intent))).toStrictEqual({ intent });
   });
 });

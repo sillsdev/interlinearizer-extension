@@ -31,8 +31,8 @@ public class ReplayTests : CrdtTestBase
             Fixtures.CreatePhraseAnalysisLink(Guid.NewGuid(), phraseId),
         ]);
         await WriteNextChange([
-            Fixtures.ReplaceTokenAnalysis(tokenId),
-            Fixtures.ReplaceTokenAnalysisLink(tokenLinkId, tokenId),
+            Fixtures.PatchTokenAnalysis(tokenId),
+            Fixtures.PatchTokenAnalysisLink(tokenLinkId),
             new DeleteChange<TokenAnalysis>(deletedTokenId),
         ]);
 

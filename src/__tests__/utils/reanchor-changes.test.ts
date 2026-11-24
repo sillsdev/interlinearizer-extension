@@ -9,6 +9,7 @@ import {
   reanchorChangesForBook,
   reanchorDraftToBook,
 } from '../../utils/reanchor-changes';
+import { scopeRecordOf } from '../../utils/change-set';
 import { missingBook } from '../../utils/reanchor-analysis';
 import { expectHostReanchor } from '../host-reanchor';
 import { FIXTURE_STAMPS, makeTokenLink, makeVerseBook, tokenRefOf } from '../test-helpers';
@@ -236,7 +237,7 @@ describe('reanchorChangesForBook', () => {
     const changes = reanchorChangesForBook(draft, genesis('new alpha beta', 'gamma'));
 
     expect(changes?.intent).toBe(REANCHOR_INTENT);
-    expect(changes?.tokenAnalysisLinks?.puts.map(({ analysisId }) => analysisId)).toEqual([
+    expect(changes?.tokenAnalysisLinks?.updates.map(({ after }) => after.analysisId)).toEqual([
       'ta-beta',
     ]);
     expect(changes?.tokenAnalysisLinks?.deletes).toEqual([]);
@@ -244,7 +245,7 @@ describe('reanchorChangesForBook', () => {
     expect(changes?.scope).toBeUndefined();
   });
 
-  it("carries the draft's whole record with a split it moved", () => {
+  it("carries the draft's record, as read and with a split it moved", () => {
     const draft = {
       ...draftOf(emptyAnalysis(), splitBeforeBeta()),
       analysisLanguages: ['fr'],
@@ -252,8 +253,10 @@ describe('reanchorChangesForBook', () => {
       dirty: true,
     };
 
-    const scope = reanchorChangesForBook(draft, genesis('alpha and beta'))?.scope;
+    const update = reanchorChangesForBook(draft, genesis('alpha and beta'))?.scope;
+    const scope = update?.after;
 
+    expect(update?.before).toStrictEqual(scopeRecordOf(draft));
     expect(scope).toEqual(
       expect.objectContaining({
         analysisLanguages: ['fr'],
@@ -283,7 +286,9 @@ describe('reanchorChangesForBook', () => {
     );
 
     expect(changes?.intent).toBe(REANCHOR_INTENT);
-    expect(changes?.tokenAnalysisLinks?.puts.map(({ status }) => status)).toEqual(['stale']);
+    expect(changes?.tokenAnalysisLinks?.updates.map(({ after }) => after.status)).toEqual([
+      'stale',
+    ]);
   });
 
   it("changes nothing for another book's links when a book the text lacks is passed", () => {

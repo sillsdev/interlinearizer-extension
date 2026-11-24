@@ -36,24 +36,6 @@ public class SegmentAnalysisTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ReplaceOverwritesEveryFieldButIdentityAndCreation()
-    {
-        var created = await WriteNextChange(Fixtures.CreateSegmentAnalysis(_analysisId));
-        var change = Fixtures.ReplaceSegmentAnalysis(_analysisId);
-        var replaced = await WriteNextChange(change);
-
-        var analysis = await DataModel.GetLatest<SegmentAnalysis>(_analysisId);
-        await Assert.That(analysis!.CreatedAt).IsEqualTo(created.DateTime);
-        await Assert.That(analysis.UpdatedAt).IsEqualTo(replaced.DateTime);
-        await Assert.That(analysis.SurfaceText).IsEqualTo(change.SurfaceText);
-        await Assert.That(analysis.Confidence).IsEqualTo(change.Confidence);
-        await Assert.That(analysis.Producer).IsEqualTo(change.Producer);
-        await Assert.That(analysis.SourceUser).IsNull();
-        await Assert.That(analysis.FreeTranslation).IsEquivalentTo(change.FreeTranslation!);
-        await Assert.That(analysis.LiteralTranslation).IsNull();
-    }
-
-    [Test]
     public async Task DeleteMarksTheAnalysisDeleted()
     {
         await WriteNextChange(Fixtures.CreateSegmentAnalysis(_analysisId));
@@ -80,27 +62,6 @@ public class SegmentAnalysisTests : CrdtTestBase
         await Assert.That(link.UpdatedAt).IsEqualTo(commit.DateTime);
         await Assert.That(link.Status).IsEqualTo(change.Status);
         await Assert.That(link.Confidence).IsEqualTo(change.Confidence);
-        await Assert.That(link.SegmentId).IsEqualTo(change.SegmentId);
-    }
-
-    [Test]
-    public async Task ReplaceLinkOverwritesEveryFieldButIdentityAndCreation()
-    {
-        var otherAnalysisId = Guid.NewGuid();
-        await WriteNextChange([
-            Fixtures.CreateSegmentAnalysis(_analysisId),
-            Fixtures.CreateSegmentAnalysis(otherAnalysisId),
-        ]);
-        var created = await WriteNextChange(Fixtures.CreateSegmentAnalysisLink(_linkId, _analysisId));
-        var change = Fixtures.ReplaceSegmentAnalysisLink(_linkId, otherAnalysisId);
-        var replaced = await WriteNextChange(change);
-
-        var link = await DataModel.GetLatest<SegmentAnalysisLink>(_linkId);
-        await Assert.That(link!.CreatedAt).IsEqualTo(created.DateTime);
-        await Assert.That(link.UpdatedAt).IsEqualTo(replaced.DateTime);
-        await Assert.That(link.AnalysisId).IsEqualTo(otherAnalysisId);
-        await Assert.That(link.Status).IsEqualTo(change.Status);
-        await Assert.That(link.Confidence).IsNull();
         await Assert.That(link.SegmentId).IsEqualTo(change.SegmentId);
     }
 

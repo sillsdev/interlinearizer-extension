@@ -5,7 +5,13 @@ import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { splitPhrase, writePhraseGloss } from '../../../services/commands/phraseCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
+import {
+  asPuts,
+  FIXTURE_STAMPS,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
@@ -47,7 +53,9 @@ describe('writePhraseGloss', () => {
       now: NOW,
     });
 
-    expect(buffer.toChangeSet('writePhraseGloss')).toStrictEqual({ intent: 'writePhraseGloss' });
+    expect(asPuts(buffer.toChangeSet('writePhraseGloss'))).toStrictEqual({
+      intent: 'writePhraseGloss',
+    });
   });
 });
 
@@ -65,6 +73,6 @@ describe('splitPhrase', () => {
       now: NOW,
     });
 
-    expect(buffer.toChangeSet('splitPhrase')).toStrictEqual({ intent: 'splitPhrase' });
+    expect(asPuts(buffer.toChangeSet('splitPhrase'))).toStrictEqual({ intent: 'splitPhrase' });
   });
 });

@@ -11,9 +11,11 @@ import {
   readStaleSummary,
   readTouchedPoolBuckets,
 } from '../../services/sessionPages';
-import type { ChangeSet } from '../../types/analysis-repository';
+import type { AppliedChangeSet, ChangeSet } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import {
+  creating,
+  deleting,
   FIXTURE_STAMPS,
   makePhraseLink,
   makeTokenLink,
@@ -629,15 +631,15 @@ describe('readTouchedPoolBuckets', () => {
       ],
     });
     const approved = makeTokenLink('ta-light', ref('light'));
-    const changes: ChangeSet = {
+    const changes: AppliedChangeSet = {
       intent: 'x',
       tokenAnalyses: { puts: [], deletes: ['ta-gone'] },
       tokenAnalysisLinks: { puts: [approved], deletes: [] },
     };
     const inverse: ChangeSet = {
       intent: 'x',
-      tokenAnalyses: { puts: [payload('ta-gone', 'In')], deletes: [] },
-      tokenAnalysisLinks: { puts: [], deletes: [approved.id] },
+      tokenAnalyses: creating([payload('ta-gone', 'In')]),
+      tokenAnalysisLinks: deleting([approved]),
     };
 
     const { poolBuckets, poolAnalyses } = await readTouchedPoolBuckets(repository, {

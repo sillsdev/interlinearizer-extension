@@ -11,11 +11,12 @@ import type {
   AnalysisLinks,
   AnalysisRepository,
   ChangeSet,
+  RecordUpdate,
   ScopeRecord,
 } from '../../types/analysis-repository';
 import { LinkedAnalysisDeleteError } from '../../types/linked-analysis-delete-error';
 import { bookOfRef } from '../../utils/analysis-book';
-import { normalizeSurfaceForm } from '../../utils/analysis-identity';
+import { deepEqual, normalizeSurfaceForm } from '../../utils/analysis-identity';
 import { jsonCopy } from '../../utils/json-copy';
 
 /** A record kind, named as {@link TextAnalysis} names its list. */
@@ -32,15 +33,19 @@ type Staged<T> = {
   deletes: Map<string, T>;
   /** Ids of the staged puts that no stored record shares, so removing one stages nothing. */
   created: Set<string>;
+  /** Stored records as first read through the buffer, by id. */
+  read: Map<string, T>;
 };
 
 function emptyStaged<T>(): Staged<T> {
-  return { puts: new Map(), deletes: new Map(), created: new Set() };
+  return { puts: new Map(), deletes: new Map(), created: new Set(), read: new Map() };
 }
 
 /**
  * A command's changes, staged over a repository until they apply. Reads through the buffer answer
- * as if the changes had applied. Each read returns copies that the command may change.
+ * as if the changes had applied. Each read returns copies that the command may change. A stored
+ * record is staged as an update from the record as first read to the record as last put, so a
+ * stored record must be read through the buffer before it is put.
  */
 export class ChangeBuffer {
   private readonly repository: AnalysisRepository;
@@ -54,8 +59,11 @@ export class ChangeBuffer {
     phraseAnalysisLinks: emptyStaged(),
   };
 
-  /** The scope's record to store whole; absent while none is staged. */
+  /** The scope's record to store; absent while none is staged. */
   private stagedScope?: ScopeRecord;
+
+  /** The scope's record as first read through the buffer; absent until then. */
+  private readScope?: ScopeRecord;
 
   constructor(repository: AnalysisRepository) {
     this.repository = repository;
@@ -160,7 +168,10 @@ export class ChangeBuffer {
 
   /** The scope's record once the staged changes apply. */
   async getScope(): Promise<ScopeRecord> {
-    return jsonCopy(this.stagedScope ?? (await this.repository.getScope()));
+    if (this.stagedScope) return jsonCopy(this.stagedScope);
+    const stored = await this.repository.getScope();
+    this.readScope ??= stored;
+    return jsonCopy(stored);
   }
 
   /**
@@ -193,23 +204,63 @@ export class ChangeBuffer {
     this.put(kind, record);
   }
 
-  /** Stages `record` to be stored whole under its id. */
+  /**
+   * Stages `record` to be stored under its id: whole when the buffer created it, and otherwise as
+   * an update from the stored record as first read.
+   *
+   * @throws {Error} If no create staged the record and the buffer never read it.
+   */
   put<Kind extends RecordKind>(kind: Kind, record: RecordOf<Kind>): void {
     const staged = this.stagedOf(kind);
+    if (!staged.created.has(record.id) && !staged.read.has(record.id)) {
+      throw new Error(
+        `Interlinearizer: ${kind} record ${record.id} is put without being read first`,
+      );
+    }
     staged.deletes.delete(record.id);
     staged.puts.set(record.id, jsonCopy(record));
   }
 
-  /** Stages `record`'s removal; removing one the buffer created stages nothing for it. */
+  /**
+   * Stages an update of a stored record from `before` to `after`, for a caller that read `before`
+   * other than through the buffer. Where the buffer has read the record, the update starts from the
+   * record as it read it instead.
+   */
+  update<Kind extends RecordKind>(kind: Kind, before: RecordOf<Kind>, after: RecordOf<Kind>): void {
+    const { read } = this.stagedOf(kind);
+    if (!read.has(before.id)) read.set(before.id, jsonCopy(before));
+    this.put(kind, after);
+  }
+
+  /**
+   * Stages `record`'s removal, carrying the stored record as first read, or else `record`; removing
+   * one the buffer created stages nothing for it.
+   */
   delete<Kind extends RecordKind>(kind: Kind, record: RecordOf<Kind>): void {
     const staged = this.stagedOf(kind);
     staged.puts.delete(record.id);
     if (staged.created.delete(record.id)) return;
-    staged.deletes.set(record.id, jsonCopy(record));
+    staged.deletes.set(record.id, jsonCopy(staged.read.get(record.id) ?? record));
   }
 
-  /** Stages `scope` to be stored whole as the scope's record. */
+  /**
+   * Stages an update of the scope's record from `before` to `after`, for a caller that read
+   * `before` other than through the buffer. Where the buffer has read the scope's record, the
+   * update starts from the record as it read it instead.
+   */
+  updateScope(before: ScopeRecord, after: ScopeRecord): void {
+    this.readScope ??= jsonCopy(before);
+    this.putScope(after);
+  }
+
+  /**
+   * Stages `scope` as an update of the scope's record from the record as first read.
+   *
+   * @throws {Error} If the scope's record was never read through the buffer.
+   */
   putScope(scope: ScopeRecord): void {
+    if (!this.readScope)
+      throw new Error('Interlinearizer: the scope is put without being read first');
     this.stagedScope = jsonCopy(scope);
   }
 
@@ -256,12 +307,14 @@ export class ChangeBuffer {
   }
 
   /**
-   * The staged changes as one change set. A kind with nothing staged is left out, and so is the
-   * scope's record while none is staged.
+   * The staged changes as one change set. A put that leaves a stored record as read stages nothing.
+   * A kind with nothing staged is left out, and so is the scope's record while none is staged.
    */
   toChangeSet(intent: string): ChangeSet {
     const changes: ChangeSet = { intent };
-    if (this.stagedScope) changes.scope = jsonCopy(this.stagedScope);
+    if (this.readScope && this.stagedScope && !deepEqual(this.readScope, this.stagedScope)) {
+      changes.scope = { before: jsonCopy(this.readScope), after: jsonCopy(this.stagedScope) };
+    }
     const kinds: RecordKind[] = [
       'segmentAnalyses',
       'segmentAnalysisLinks',
@@ -286,6 +339,7 @@ export class ChangeBuffer {
     const staged = this.stagedOf(kind);
     const latest = new Map<string, RecordOf<Kind>>();
     stored.forEach((record) => {
+      if (!staged.read.has(record.id)) staged.read.set(record.id, record);
       if (!staged.deletes.has(record.id)) latest.set(record.id, record);
     });
     staged.puts.forEach((record, id) => latest.set(id, record));
@@ -293,12 +347,22 @@ export class ChangeBuffer {
   }
 
   private collect<Kind extends RecordKind>(changes: ChangeSet, kind: Kind): void {
-    const { puts, deletes } = this.stagedOf(kind);
-    if (puts.size === 0 && deletes.size === 0) return;
+    const { puts, deletes, created, read } = this.stagedOf(kind);
+    const creates: RecordOf<Kind>[] = [];
+    const updates: RecordUpdate<RecordOf<Kind>>[] = [];
+    puts.forEach((record, id) => {
+      const before = read.get(id);
+      if (created.has(id) || !before) creates.push(jsonCopy(record));
+      else if (!deepEqual(before, record)) {
+        updates.push({ before: jsonCopy(before), after: jsonCopy(record) });
+      }
+    });
+    if (creates.length === 0 && updates.length === 0 && deletes.size === 0) return;
     Object.assign(changes, {
       [kind]: {
-        puts: [...puts.values()].map((record) => jsonCopy(record)),
-        deletes: [...deletes.keys()],
+        creates,
+        updates,
+        deletes: [...deletes.values()].map((record) => jsonCopy(record)),
       },
     });
   }

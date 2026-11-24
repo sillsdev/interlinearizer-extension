@@ -7,7 +7,7 @@ import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { BOOKLESS_PARTITION, splitAnalysisByBook } from '../../utils/analysis-book';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
 import { applyChangeSet } from '../../utils/change-set';
-import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
+import { creating, deleting, FIXTURE_STAMPS, makePhraseLink, updating } from '../test-helpers';
 
 const link = { ...FIXTURE_STAMPS, status: 'approved' as const };
 
@@ -143,15 +143,26 @@ describe('AnalysisIndex', () => {
       return { ...base, tokenAnalyses: [...base.tokenAnalyses, unlinked] };
     }
 
+    /** {@link withUnlinked}'s record of `kind` under `id`. */
+    function stored<Kind extends keyof TextAnalysis>(
+      kind: Kind,
+      id: string,
+    ): TextAnalysis[Kind][number] {
+      const records: TextAnalysis[Kind][number][] = withUnlinked()[kind];
+      const record = records.find((candidate) => candidate.id === id);
+      if (!record) throw new Error(`No ${kind} fixture ${id}`);
+      return record;
+    }
+
     const cases: [string, ChangeSet, string[]][] = [
       [
         'a payload edit reaches the books linking it',
         {
           intent: 'gloss',
-          tokenAnalyses: {
-            puts: [{ id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'but' }],
-            deletes: [],
-          },
+          tokenAnalyses: updating({
+            before: stored('tokenAnalyses', 'ta-and'),
+            after: { id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'but' },
+          }),
         },
         ['GEN'],
       ],
@@ -159,21 +170,27 @@ describe('AnalysisIndex', () => {
         'a link edit reaches its book',
         {
           intent: 'status',
-          tokenAnalysisLinks: { puts: [{ ...exodusLink, status: 'approved' }], deletes: [] },
+          tokenAnalysisLinks: updating({
+            before: exodusLink,
+            after: { ...exodusLink, status: 'approved' },
+          }),
         },
         ['EXO'],
       ],
       [
         'deleting the last link to a payload reaches the bookless partition',
-        { intent: 'clear', tokenAnalysisLinks: { puts: [], deletes: ['tl-gen'] } },
+        {
+          intent: 'clear',
+          tokenAnalysisLinks: deleting([stored('tokenAnalysisLinks', 'tl-gen')]),
+        },
         ['GEN', BOOKLESS_PARTITION],
       ],
       [
         'deleting a phrase with its payload leaves the bookless partition alone',
         {
           intent: 'removePhrase',
-          phraseAnalyses: { puts: [], deletes: ['pa-1'] },
-          phraseAnalysisLinks: { puts: [], deletes: ['pa-1'] },
+          phraseAnalyses: deleting([stored('phraseAnalyses', 'pa-1')]),
+          phraseAnalysisLinks: deleting([stored('phraseAnalysisLinks', 'pa-1')]),
         },
         ['GEN'],
       ],
@@ -181,10 +198,7 @@ describe('AnalysisIndex', () => {
         'a payload put with no link reaches the bookless partition',
         {
           intent: 'add',
-          tokenAnalyses: {
-            puts: [{ id: 'ta-new', ...FIXTURE_STAMPS, surfaceText: 'new' }],
-            deletes: [],
-          },
+          tokenAnalyses: creating([{ id: 'ta-new', ...FIXTURE_STAMPS, surfaceText: 'new' }]),
         },
         [BOOKLESS_PARTITION],
       ],
@@ -192,10 +206,7 @@ describe('AnalysisIndex', () => {
         'linking an unlinked payload reaches its new book and the bookless partition',
         {
           intent: 'link',
-          tokenAnalysisLinks: {
-            puts: [{ ...genesisLink, id: 'tl-so', analysisId: 'ta-so' }],
-            deletes: [],
-          },
+          tokenAnalysisLinks: creating([{ ...genesisLink, id: 'tl-so', analysisId: 'ta-so' }]),
         },
         ['GEN', BOOKLESS_PARTITION],
       ],
@@ -203,7 +214,10 @@ describe('AnalysisIndex', () => {
         'relinking a link reaches the bookless partition when its old payload is left unlinked',
         {
           intent: 'relink',
-          tokenAnalysisLinks: { puts: [{ ...exodusLink, analysisId: 'ta-and' }], deletes: [] },
+          tokenAnalysisLinks: updating({
+            before: exodusLink,
+            after: { ...exodusLink, analysisId: 'ta-and' },
+          }),
         },
         ['EXO', BOOKLESS_PARTITION],
       ],
@@ -211,16 +225,15 @@ describe('AnalysisIndex', () => {
         'a segment link into a new book reaches that book',
         {
           intent: 'translate',
-          segmentAnalysisLinks: {
-            puts: [{ ...link, id: 'sl-lev', analysisId: 'sa-1', segmentId: 'LEV 1:1' }],
-            deletes: [],
-          },
+          segmentAnalysisLinks: creating([
+            { ...link, id: 'sl-lev', analysisId: 'sa-1', segmentId: 'LEV 1:1' },
+          ]),
         },
         ['LEV'],
       ],
       [
         'deleting a payload still named by links reaches their books',
-        { intent: 'delete', tokenAnalyses: { puts: [], deletes: ['ta-And'] } },
+        { intent: 'delete', tokenAnalyses: deleting([stored('tokenAnalyses', 'ta-And')]) },
         ['EXO'],
       ],
     ];
@@ -248,18 +261,17 @@ describe('AnalysisIndex', () => {
       const base = withUnlinked();
       const changes: ChangeSet = {
         intent: 'move',
-        tokenAnalysisLinks: {
-          puts: [{ ...genesisLink, token: { tokenRef: 'EXO 1:1:4', surfaceText: 'and' } }],
-          deletes: [],
-        },
+        tokenAnalysisLinks: updating({
+          before: genesisLink,
+          after: { ...genesisLink, token: { tokenRef: 'EXO 1:1:4', surfaceText: 'and' } },
+        }),
       };
-      const after = splitAnalysisByBook(
-        applyChangeSet({ ...emptyDraft('src'), analysis: base }, changes).draft.analysis,
-      );
+      const { draft, applied } = applyChangeSet({ ...emptyDraft('src'), analysis: base }, changes);
+      const after = splitAnalysisByBook(draft.analysis);
       const index = new AnalysisIndex(base);
 
-      expect([...index.reach(changes)].sort()).toStrictEqual(['EXO', 'GEN']);
-      index.apply(changes);
+      expect([...index.reach(applied)].sort()).toStrictEqual(['EXO', 'GEN']);
+      index.apply(applied);
 
       expect(index.partition('GEN')).toStrictEqual(after.get('GEN'));
       const exodus = index.partition('EXO');

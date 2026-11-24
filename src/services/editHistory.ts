@@ -2,7 +2,7 @@ import type { ReadonlyBook } from 'interlinearizer';
 import type { AnalysisRepository, ApplyOptions, ChangeSet } from '../types/analysis-repository';
 import type { EditStep } from '../types/edit-step';
 import type { AppliedChange } from './analysisChanges';
-import { mergeChangeSets } from '../utils/change-set';
+import { invertChangeSet, mergeChangeSets } from '../utils/change-set';
 import { REANCHOR_INTENT } from '../utils/reanchor-changes';
 
 /** How many of the most recent steps stay undoable; older ones are forgotten. */
@@ -44,7 +44,7 @@ type Step = {
   changes: ChangeSet;
   /** The step that the edit was recorded as. */
   step?: EditStep;
-  /** How many passes had been recorded when the step was captured, all of which it reflects. */
+  /** How many passes the step reflects: every pass up to this count, and possibly later ones. */
   passesSeen: number;
   /** The state that applying the step leads to. */
   state: number;
@@ -53,6 +53,9 @@ type Step = {
 /**
  * A linear undo history of the edits applied through it to one repository, keeping the latest
  * {@link MAX_UNDO_STEPS}. Each edit is one step, and a new edit drops every step undone before it.
+ *
+ * A step holds the changes that undo what the apply reports applied. An undo writes only the fields
+ * that its edit changed. A link that a deleted analysis took with it is not restored.
  *
  * A re-anchor pass is no step. A step holds records as they read when it was captured. So what an
  * undo or redo restores is re-anchored to the current text of each book that a pass has re-anchored
@@ -153,10 +156,11 @@ export class EditHistory {
    */
   async apply(changes: ChangeSet, options?: EditOptions): Promise<AppliedChange> {
     const keep = options?.unsavedMark === 'keep';
-    const { inverse, applied, wasDirty } = await this.repository.apply(changes, {
+    const { applied, wasDirty } = await this.repository.apply(changes, {
       ...(keep && { keepDirty: true }),
       ...(options?.unanchored && { unanchored: options.unanchored }),
     });
+    const inverse = invertChangeSet(changes, applied);
     this.appliedCount += 1;
     this.noteMark(wasDirty);
     this.undoable.push({
@@ -219,12 +223,12 @@ export class EditHistory {
     book: ReadonlyBook,
     changes: ChangeSet | undefined,
   ): Promise<AppliedChange | undefined> {
-    const { inverse, applied } = await this.repository.apply(
-      changes ?? { intent: REANCHOR_INTENT },
-      { keepDirty: true, anchoredTo: { bookCode: book.bookRef, textVersion: book.textVersion } },
-    );
+    const { applied } = await this.repository.apply(changes ?? { intent: REANCHOR_INTENT }, {
+      keepDirty: true,
+      anchoredTo: { bookCode: book.bookRef, textVersion: book.textVersion },
+    });
     this.recordPass(book);
-    return changes && { changes: applied, inverse };
+    return changes && { changes: applied, inverse: invertChangeSet(changes, applied) };
   }
 
   /**
@@ -279,14 +283,16 @@ export class EditHistory {
         ? await this.reanchorBooks(step.changes, books)
         : undefined;
     const changes = reanchored ? mergeChangeSets(step.changes, reanchored) : step.changes;
-    const { inverse, applied, wasDirty } = await this.repository.apply(changes);
+    const { applied, wasDirty } = await this.repository.apply(changes);
+    const inverse = invertChangeSet(changes, applied);
     this.appliedCount += 1;
     this.noteMark(wasDirty);
     from.pop();
     to.push({
       changes: inverse,
       ...(step.step && { step: step.step }),
-      passesSeen: this.passCount,
+      // The inverse recreates each deleted record as the step read it, before any later pass.
+      passesSeen: step.passesSeen,
       state: this.state,
     });
     this.state = step.state;

@@ -18,108 +18,128 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     public const string IntentMetadataKey = "intent";
 
     /// <summary>
-    /// Applies <paramref name="changes"/> as one commit, so whole or not at all. A put of a record
-    /// not stored creates it in this project. A put of one stored replaces it whole, or, when
-    /// <paramref name="putMode"/> asks for a patch, writes only the fields that differ from the
-    /// stored record and nothing when none does. The timestamps a put carries are ignored, because
-    /// the commit stamps them. A delete of a record not stored, or stored in another project, is
-    /// skipped. A change set that changes nothing writes no commit.
+    /// Applies <paramref name="changes"/> as one commit, so whole or not at all. A create stores its
+    /// record in this project. An update writes only the fields that differ between its before and
+    /// its after, key by key for a multistring or feature map, so a field that another commit
+    /// changed since the read stands. An update writes nothing when none differs, and skips a
+    /// record not stored. The timestamps a record carries are ignored, because the commit stamps them. A delete
+    /// of a record not stored, or stored in another project, is skipped. A change set that changes
+    /// nothing writes no commit.
     /// </summary>
     /// <returns>
     /// What the commit changed, under the change set's intent: each record that it left stored, as
     /// stored, and the id of each record that it deleted. The deleted ids include the links that a
-    /// deleted analysis took with it. A skipped delete, and a patch that wrote nothing, are left out.
+    /// deleted analysis took with it. A skipped update or delete, and an update that wrote nothing,
+    /// are left out. So is a delete that a later-dated create undid.
     /// </returns>
     /// <exception cref="ArgumentException">
-    /// If an id appears more than once in the changes, in one record kind or across kinds; if a
-    /// put's id is or was stored as a record of another kind or in another project; if a put names
-    /// a project other than this one; or if a link names an analysis stored in another project, or
-    /// one that will not be stored once the changes apply.
+    /// If an id appears more than once in the changes, in one record kind or across kinds; if an
+    /// update's before and after name different ids; if a create's id is stored, or is or was stored
+    /// as a record of another kind or in another project; if an update's id is stored as another
+    /// kind or in another project; if a create or update names a project other than this one; if a
+    /// create places a link, or an update moves a stored one, onto an analysis stored in another
+    /// project, or onto one that will not be stored once the changes apply; or if an update leaves a
+    /// stored link on an analysis that the changes delete.
     /// Nothing is applied. Harmony keeps every entity in one table, so two records cannot share an
-    /// id across kinds or projects, and a put under a deleted record's id brings that record back.
+    /// id across kinds or projects, and a create under a deleted record's id brings that record back.
     /// </exception>
-    public async Task<ChangeSet> Apply(ChangeSet changes, PutMode putMode = PutMode.Replace)
+    public async Task<AppliedChangeSet> Apply(ChangeSet changes)
     {
-        var kinds = new IKindChanges[]
-        {
-            new KindChanges<SegmentAnalysis>("segment analysis", changes.SegmentAnalyses,
-                a => new CreateSegmentAnalysisChange(a, projectId),
-                a => new ReplaceSegmentAnalysisChange(a),
-                PatchSegmentAnalysisChange.Diff,
-                id => new DeleteChange<SegmentAnalysis>(id)),
-            new KindChanges<TokenAnalysis>("token analysis", changes.TokenAnalyses,
-                a => new CreateTokenAnalysisChange(a, projectId),
-                a => new ReplaceTokenAnalysisChange(a),
-                PatchTokenAnalysisChange.Diff,
-                id => new DeleteChange<TokenAnalysis>(id)),
-            new KindChanges<PhraseAnalysis>("phrase analysis", changes.PhraseAnalyses,
-                a => new CreatePhraseAnalysisChange(a, projectId),
-                a => new ReplacePhraseAnalysisChange(a),
-                PatchPhraseAnalysisChange.Diff,
-                id => new DeleteChange<PhraseAnalysis>(id)),
-            new KindChanges<SegmentAnalysisLink>("segment analysis link", changes.SegmentAnalysisLinks,
-                l => new CreateSegmentAnalysisLinkChange(l, projectId),
-                l => new ReplaceSegmentAnalysisLinkChange(l),
-                PatchSegmentAnalysisLinkChange.Diff,
-                id => new DeleteChange<SegmentAnalysisLink>(id)),
-            new KindChanges<TokenAnalysisLink>("token analysis link", changes.TokenAnalysisLinks,
-                l => new CreateTokenAnalysisLinkChange(l, projectId),
-                l => new ReplaceTokenAnalysisLinkChange(l),
-                PatchTokenAnalysisLinkChange.Diff,
-                id => new DeleteChange<TokenAnalysisLink>(id)),
-            new KindChanges<PhraseAnalysisLink>("phrase analysis link", changes.PhraseAnalysisLinks,
-                l => new CreatePhraseAnalysisLinkChange(l, projectId),
-                l => new ReplacePhraseAnalysisLinkChange(l),
-                PatchPhraseAnalysisLinkChange.Diff,
-                id => new DeleteChange<PhraseAnalysisLink>(id)),
-        };
+        var segmentAnalyses = new KindChanges<SegmentAnalysis>("segment analysis", changes.SegmentAnalyses,
+            a => new CreateSegmentAnalysisChange(a, projectId),
+            PatchSegmentAnalysisChange.Diff,
+            id => new DeleteChange<SegmentAnalysis>(id));
+        var tokenAnalyses = new KindChanges<TokenAnalysis>("token analysis", changes.TokenAnalyses,
+            a => new CreateTokenAnalysisChange(a, projectId),
+            PatchTokenAnalysisChange.Diff,
+            id => new DeleteChange<TokenAnalysis>(id));
+        var phraseAnalyses = new KindChanges<PhraseAnalysis>("phrase analysis", changes.PhraseAnalyses,
+            a => new CreatePhraseAnalysisChange(a, projectId),
+            PatchPhraseAnalysisChange.Diff,
+            id => new DeleteChange<PhraseAnalysis>(id));
+        var segmentLinks = new KindChanges<SegmentAnalysisLink>("segment analysis link", changes.SegmentAnalysisLinks,
+            l => new CreateSegmentAnalysisLinkChange(l, projectId),
+            PatchSegmentAnalysisLinkChange.Diff,
+            id => new DeleteChange<SegmentAnalysisLink>(id));
+        var tokenLinks = new KindChanges<TokenAnalysisLink>("token analysis link", changes.TokenAnalysisLinks,
+            l => new CreateTokenAnalysisLinkChange(l, projectId),
+            PatchTokenAnalysisLinkChange.Diff,
+            id => new DeleteChange<TokenAnalysisLink>(id));
+        var phraseLinks = new KindChanges<PhraseAnalysisLink>("phrase analysis link", changes.PhraseAnalysisLinks,
+            l => new CreatePhraseAnalysisLinkChange(l, projectId),
+            PatchPhraseAnalysisLinkChange.Diff,
+            id => new DeleteChange<PhraseAnalysisLink>(id));
+        var kinds = new IKindChanges[] { segmentAnalyses, tokenAnalyses, phraseAnalyses, segmentLinks, tokenLinks, phraseLinks };
         AssertIdsDistinct(kinds);
 
-        var putIds = kinds.SelectMany(k => k.PutIds).ToList();
+        var writtenIds = kinds.SelectMany(k => k.CreateIds.Concat(k.UpdateIds)).ToList();
         var storedKinds = new Dictionary<Guid, string>();
-        foreach (var kind in kinds) await kind.LoadStored(this, putIds, storedKinds);
-        await AssertUnstoredIdsReusable(kinds, putIds.Where(id => !storedKinds.ContainsKey(id)).ToList());
+        foreach (var kind in kinds) await kind.LoadStored(this, writtenIds, storedKinds);
+        await AssertUnstoredIdsReusable(kinds, kinds.SelectMany(k => k.CreateIds).Where(id => !storedKinds.ContainsKey(id)).ToList());
         await AssertLinkedAnalysesStored(kinds);
         var harmonyChanges = new List<IChange>();
-        foreach (var kind in kinds) kind.AddChanges(harmonyChanges, putMode, projectId, storedKinds);
-        if (harmonyChanges.Count == 0) return new ChangeSet { Intent = changes.Intent };
+        foreach (var kind in kinds) kind.AddChanges(harmonyChanges, projectId, storedKinds);
+        if (harmonyChanges.Count == 0) return new AppliedChangeSet { Intent = changes.Intent };
 
-        var commit = await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
-        return await ChangedBy(commit, changes.Intent);
+        var deletedAnalyses = new IKindChanges[] { segmentAnalyses, tokenAnalyses, phraseAnalyses }.SelectMany(k => k.AppliedDeleteIds).ToList();
+        if (deletedAnalyses.Count == 0)
+        {
+            await Commit(harmonyChanges, changes.Intent);
+            return await Report(changes.Intent, segmentAnalyses, tokenAnalyses, phraseAnalyses, segmentLinks, tokenLinks, phraseLinks, [], [], []);
+        }
+
+        // A delete takes the links that were on the analysis at its commit's date. When no commit
+        // is dated after this one, those are the links on the analysis now. Harmony's clock makes
+        // that the usual case.
+        await using (var transaction = await db.Database.BeginTransactionAsync())
+        {
+            var on = await FindLinksToAnalyses(deletedAnalyses);
+            var commit = await Commit(harmonyChanges, changes.Intent);
+            if (!await db.Commits.WhereAfter(commit).AnyAsync())
+            {
+                await transaction.CommitAsync();
+                return await Report(changes.Intent, segmentAnalyses, tokenAnalyses, phraseAnalyses, segmentLinks, tokenLinks, phraseLinks,
+                    on.SegmentAnalysisLinks.Select(l => l.Id).ToList(),
+                    on.TokenAnalysisLinks.Select(l => l.Id).ToList(),
+                    on.PhraseAnalysisLinks.Select(l => l.Id).ToList());
+            }
+            await transaction.RollbackAsync();
+        }
+        db.ChangeTracker.Clear();
+
+        // A later-dated commit may have moved a link off the analysis since this commit's date.
+        // So every link of the project is a candidate.
+        var segmentLinksBefore = await StoredIds<SegmentAnalysisLink>();
+        var tokenLinksBefore = await StoredIds<TokenAnalysisLink>();
+        var phraseLinksBefore = await StoredIds<PhraseAnalysisLink>();
+        await Commit(harmonyChanges, changes.Intent);
+        return await Report(changes.Intent, segmentAnalyses, tokenAnalyses, phraseAnalyses, segmentLinks, tokenLinks, phraseLinks,
+            segmentLinksBefore, tokenLinksBefore, phraseLinksBefore);
     }
+
+    private Task<Commit> Commit(List<IChange> harmonyChanges, string intent) =>
+        dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = intent });
 
     /// <summary>
-    /// The records that <paramref name="commit"/> wrote snapshots of, as a change set. A record
-    /// deleted before the commit, whose snapshot a cascade rewrote, is left out.
+    /// What the commit left of each kind. Each candidate link that is no longer stored is reported
+    /// deleted too, unless the changes deleted it themselves.
     /// </summary>
-    private async Task<ChangeSet> ChangedBy(Commit commit, string intent)
-    {
-        var records = (await db.Snapshots.Where(s => s.CommitId == commit.Id).ToListAsync())
-            .Select(s => s.Entity.DbObject)
-            .OfType<AnalysisRecord>()
-            .Where(r => r.DeletedAt is null || r.DeletedAt == commit.DateTime)
-            .ToList();
-        return new ChangeSet
+    private async Task<AppliedChangeSet> Report(string intent,
+        KindChanges<SegmentAnalysis> segmentAnalyses, KindChanges<TokenAnalysis> tokenAnalyses, KindChanges<PhraseAnalysis> phraseAnalyses,
+        KindChanges<SegmentAnalysisLink> segmentLinks, KindChanges<TokenAnalysisLink> tokenLinks, KindChanges<PhraseAnalysisLink> phraseLinks,
+        List<Guid> segmentLinkCandidates, List<Guid> tokenLinkCandidates, List<Guid> phraseLinkCandidates) =>
+        // Read afresh, not from the commit's snapshots. Harmony keeps no snapshot under a commit
+        // dated before others, and the stored records hold the changes of later commits.
+        new()
         {
             Intent = intent,
-            SegmentAnalyses = Changed<SegmentAnalysis>(records),
-            SegmentAnalysisLinks = Changed<SegmentAnalysisLink>(records),
-            TokenAnalyses = Changed<TokenAnalysis>(records),
-            TokenAnalysisLinks = Changed<TokenAnalysisLink>(records),
-            PhraseAnalyses = Changed<PhraseAnalysis>(records),
-            PhraseAnalysisLinks = Changed<PhraseAnalysisLink>(records),
+            SegmentAnalyses = await segmentAnalyses.Applied(this, []),
+            SegmentAnalysisLinks = await segmentLinks.Applied(this, await Taken<SegmentAnalysisLink>(segmentLinkCandidates, segmentLinks.AppliedDeleteIds)),
+            TokenAnalyses = await tokenAnalyses.Applied(this, []),
+            TokenAnalysisLinks = await tokenLinks.Applied(this, await Taken<TokenAnalysisLink>(tokenLinkCandidates, tokenLinks.AppliedDeleteIds)),
+            PhraseAnalyses = await phraseAnalyses.Applied(this, []),
+            PhraseAnalysisLinks = await phraseLinks.Applied(this, await Taken<PhraseAnalysisLink>(phraseLinkCandidates, phraseLinks.AppliedDeleteIds)),
         };
-    }
-
-    /// <summary>The changes of one kind among <paramref name="records"/>, or null when there are none.</summary>
-    private static RecordChanges<T>? Changed<T>(List<AnalysisRecord> records) where T : AnalysisRecord
-    {
-        var ofKind = records.OfType<T>().ToList();
-        if (ofKind.Count == 0) return null;
-        return new RecordChanges<T>(
-            ofKind.Where(r => r.DeletedAt is null).ToList(),
-            ofKind.Where(r => r.DeletedAt is not null).Select(r => r.Id).ToList());
-    }
 
     /// <summary>Every stored record.</summary>
     public async Task<TextAnalysis> ReadAll() => new(
@@ -314,19 +334,30 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     private Task<List<T>> StoredInAnyProject<T>(IReadOnlyCollection<Guid> ids) where T : AnalysisRecord, IObjectBase =>
         dataModel.QueryLatest<T>(q => q.Where(e => ids.Contains(e.Id))).ToListAsync().AsTask();
 
-    /// <summary>
-    /// Refuses a put under an id that an interlinear project holds, or that a deleted record of
-    /// another kind or project held. Harmony would bring a deleted record back as the put's kind and
-    /// project, history and all.
-    /// </summary>
-    private async Task AssertUnstoredIdsReusable(IKindChanges[] kinds, List<Guid> unstoredPutIds)
+    private Task<List<Guid>> StoredIds<T>() where T : AnalysisLink, IObjectBase => Query<T, Guid>(q => q.Select(l => l.Id));
+
+    /// <summary>The links of <paramref name="before"/>, other than those in <paramref name="deleted"/>, that are no longer stored.</summary>
+    private async Task<List<Guid>> Taken<T>(List<Guid> before, IEnumerable<Guid> deleted) where T : AnalysisLink, IObjectBase
     {
-        if (unstoredPutIds.Count == 0) return;
-        var everStored = await db.Snapshots.Where(s => unstoredPutIds.Contains(s.EntityId)).Select(s => s.EntityId).Distinct().ToListAsync();
+        if (before.Count == 0) return before;
+        var still = (await Query<T, Guid>(q => q.Where(l => before.Contains(l.Id)).Select(l => l.Id))).ToHashSet();
+        still.UnionWith(deleted);
+        return before.Where(id => !still.Contains(id)).ToList();
+    }
+
+    /// <summary>
+    /// Refuses a create under an id that an interlinear project holds, or that a deleted record of
+    /// another kind or project held. Harmony would bring a deleted record back as the create's kind
+    /// and project, history and all.
+    /// </summary>
+    private async Task AssertUnstoredIdsReusable(IKindChanges[] kinds, List<Guid> unstoredCreateIds)
+    {
+        if (unstoredCreateIds.Count == 0) return;
+        var everStored = await db.Snapshots.Where(s => unstoredCreateIds.Contains(s.EntityId)).Select(s => s.EntityId).Distinct().ToListAsync();
         foreach (var id in everStored)
         {
             var previous = (await dataModel.GetLatestSnapshotByObjectId(id)).Entity;
-            var kind = kinds.First(k => k.PutIds.Contains(id));
+            var kind = kinds.First(k => k.CreateIds.Contains(id));
             var previousAs = kinds.FirstOrDefault(k => k.IsKindOf(previous))?.Name
                 ?? (previous is InterlinearProject ? "interlinear project" : previous.GetType().Name);
             if (previousAs != kind.Name) throw new ArgumentException($"The {kind.Name} {id} has been stored as kind {previousAs}", "changes");
@@ -340,15 +371,23 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// <summary>
     /// Refuses a link naming another project's analysis, which this project's reads could not
     /// resolve and whose deletion would delete the link. Also refuses a link naming an analysis
-    /// that the changes neither put nor leave stored; Harmony would create that link already
-    /// deleted.
+    /// that the changes neither create nor leave stored; Harmony would create that link already
+    /// deleted. Also refuses an update that keeps a link on an analysis that the changes delete;
+    /// Harmony would delete that link with its analysis.
     /// </summary>
     private async Task AssertLinkedAnalysesStored(IKindChanges[] kinds)
     {
-        var links = kinds.SelectMany(k => k.PutLinks).ToList();
+        var deletes = kinds.SelectMany(k => k.StoredDeleteIds(projectId)).ToHashSet();
+        foreach (var kept in kinds.SelectMany(k => k.KeptLinks))
+        {
+            if (deletes.Contains(kept.AnalysisId))
+            {
+                throw new ArgumentException($"An update keeps the link {kept.Id} on analysis {kept.AnalysisId}, which the changes delete", nameof(kinds));
+            }
+        }
+        var links = kinds.SelectMany(k => k.WrittenLinks).ToList();
         if (links.Count == 0) return;
-        var putAnalyses = kinds.SelectMany(k => k.PutAnalysisIds).ToHashSet();
-        var deletes = kinds.SelectMany(k => k.DeleteIds).ToHashSet();
+        var createdAnalyses = kinds.SelectMany(k => k.CreatedAnalysisIds).ToHashSet();
         var analysisIds = links.Select(l => l.AnalysisId).Distinct().ToList();
         var projects = new Dictionary<Guid, Guid>();
         foreach (var analysis in (await StoredInAnyProject<TokenAnalysis>(analysisIds)).Cast<Analysis>()
@@ -361,11 +400,11 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         {
             if (projects.TryGetValue(link.AnalysisId, out var analysisProject) && analysisProject != projectId)
             {
-                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, stored in project {analysisProject}", "changes");
+                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, stored in project {analysisProject}", nameof(kinds));
             }
-            if (!putAnalyses.Contains(link.AnalysisId) && (!projects.ContainsKey(link.AnalysisId) || deletes.Contains(link.AnalysisId)))
+            if (!createdAnalyses.Contains(link.AnalysisId) && (!projects.ContainsKey(link.AnalysisId) || deletes.Contains(link.AnalysisId)))
             {
-                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, which will not be stored", "changes");
+                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, which will not be stored", nameof(kinds));
             }
         }
     }
@@ -393,90 +432,167 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     {
         string Name { get; }
 
-        /// <summary>Every id the changes name, put or deleted.</summary>
+        /// <summary>Every id the changes name, created, updated or deleted.</summary>
         IEnumerable<Guid> Ids { get; }
 
-        IEnumerable<Guid> PutIds { get; }
+        IEnumerable<Guid> CreateIds { get; }
+
+        IEnumerable<Guid> UpdateIds { get; }
 
         IEnumerable<Guid> DeleteIds { get; }
 
-        /// <summary>The puts of this kind that are links.</summary>
-        IEnumerable<AnalysisLink> PutLinks { get; }
+        /// <summary>
+        /// The ids that the changes delete under this kind, of records stored in <paramref name="projectId"/>.
+        /// Empty until <see cref="LoadStored"/> has run.
+        /// </summary>
+        IEnumerable<Guid> StoredDeleteIds(Guid projectId);
 
-        /// <summary>The ids of the puts of this kind that are analyses.</summary>
-        IEnumerable<Guid> PutAnalysisIds { get; }
+        /// <summary>The ids of the stored records that the changes delete. Empty until <see cref="AddChanges"/> has run.</summary>
+        IEnumerable<Guid> AppliedDeleteIds { get; }
+
+        /// <summary>
+        /// The links of this kind that the changes create, and the stored ones that an update moves
+        /// to another analysis, as the update leaves them. An update that keeps its analysis writes
+        /// no analysis, so the stored one stands. Holds no update until <see cref="LoadStored"/> has
+        /// run.
+        /// </summary>
+        IEnumerable<AnalysisLink> WrittenLinks { get; }
+
+        /// <summary>
+        /// The stored links of this kind that an update leaves on their analysis, as stored. Empty
+        /// until <see cref="LoadStored"/> has run.
+        /// </summary>
+        IEnumerable<AnalysisLink> KeptLinks { get; }
+
+        /// <summary>The ids of the analyses of this kind that the changes create.</summary>
+        IEnumerable<Guid> CreatedAnalysisIds { get; }
 
         bool IsKindOf(IObjectBase entity);
 
         /// <summary>
-        /// Loads the records of this kind stored under any of <paramref name="allPutIds"/>, whichever
-        /// kind puts them and whichever project holds them, or deleted here, and files their ids
-        /// under this kind in <paramref name="storedKinds"/>.
+        /// Loads the records of this kind stored under any of <paramref name="allWrittenIds"/>,
+        /// whichever kind creates or updates them and whichever project holds them, or deleted
+        /// here, and files their ids under this kind in <paramref name="storedKinds"/>.
         /// </summary>
-        Task LoadStored(AnalysisRepository repository, IReadOnlyCollection<Guid> allPutIds, Dictionary<Guid, string> storedKinds);
+        Task LoadStored(AnalysisRepository repository, IReadOnlyCollection<Guid> allWrittenIds, Dictionary<Guid, string> storedKinds);
 
         /// <exception cref="ArgumentException">
-        /// If a put names another project, or its id is stored as another kind or in another project.
+        /// If a create or update names another project, a create's id is stored, or an update's id
+        /// is stored as another kind or in another project.
         /// </exception>
-        void AddChanges(List<IChange> into, PutMode putMode, Guid projectId, IReadOnlyDictionary<Guid, string> storedKinds);
+        void AddChanges(List<IChange> into, Guid projectId, IReadOnlyDictionary<Guid, string> storedKinds);
     }
 
     private sealed class KindChanges<T>(
         string name,
         RecordChanges<T>? changes,
         Func<T, IChange> create,
-        Func<T, IChange> replace,
         Func<T, T, IChange?> diff,
         Func<Guid, IChange> delete) : IKindChanges where T : AnalysisRecord, IObjectBase
     {
         private Dictionary<Guid, T> _stored = [];
+        private readonly List<Guid> _putIds = [];
+        private readonly List<Guid> _deleteIds = [];
 
         public string Name => name;
 
-        public IEnumerable<Guid> PutIds => changes?.Puts.Select(r => r.Id) ?? [];
+        public IEnumerable<Guid> CreateIds => changes?.Creates.Select(r => r.Id) ?? [];
 
-        public IEnumerable<Guid> DeleteIds => changes?.Deletes ?? [];
+        public IEnumerable<Guid> UpdateIds => changes?.Updates.Select(u => u.After.Id) ?? [];
 
-        public IEnumerable<Guid> Ids => PutIds.Concat(DeleteIds);
+        public IEnumerable<Guid> DeleteIds => changes?.Deletes.Select(r => r.Id) ?? [];
 
-        public IEnumerable<AnalysisLink> PutLinks => changes?.Puts.OfType<AnalysisLink>() ?? [];
+        public IEnumerable<Guid> Ids => CreateIds.Concat(UpdateIds).Concat(DeleteIds);
 
-        public IEnumerable<Guid> PutAnalysisIds => changes?.Puts.OfType<Analysis>().Select(a => a.Id) ?? [];
+        public IEnumerable<Guid> AppliedDeleteIds => _deleteIds;
+
+        public IEnumerable<Guid> StoredDeleteIds(Guid projectId) =>
+            DeleteIds.Where(id => _stored.TryGetValue(id, out var stored) && stored.ProjectId == projectId);
+
+        public IEnumerable<AnalysisLink> WrittenLinks =>
+            changes?.Creates.OfType<AnalysisLink>().Concat(changes.Updates
+                .Where(u => u is { Before: AnalysisLink before, After: AnalysisLink after } && before.AnalysisId != after.AnalysisId
+                    && _stored.ContainsKey(u.After.Id))
+                .Select(u => u.After).OfType<AnalysisLink>()) ?? [];
+
+        public IEnumerable<AnalysisLink> KeptLinks =>
+            changes?.Updates
+                .Where(u => u is { Before: AnalysisLink before, After: AnalysisLink after } && before.AnalysisId == after.AnalysisId)
+                .Select(u => _stored.GetValueOrDefault(u.After.Id))
+                .OfType<AnalysisLink>() ?? [];
+
+        public IEnumerable<Guid> CreatedAnalysisIds => changes?.Creates.OfType<Analysis>().Select(a => a.Id) ?? [];
 
         public bool IsKindOf(IObjectBase entity) => entity is T;
 
-        public async Task LoadStored(AnalysisRepository repository, IReadOnlyCollection<Guid> allPutIds, Dictionary<Guid, string> storedKinds)
+        public async Task LoadStored(AnalysisRepository repository, IReadOnlyCollection<Guid> allWrittenIds, Dictionary<Guid, string> storedKinds)
         {
-            var ids = allPutIds.Concat(changes?.Deletes ?? []).Distinct().ToList();
+            var ids = allWrittenIds.Concat(DeleteIds).Distinct().ToList();
             if (ids.Count == 0) return;
             _stored = (await repository.StoredInAnyProject<T>(ids)).ToDictionary(e => e.Id);
             foreach (var id in _stored.Keys) storedKinds[id] = name;
         }
 
-        public void AddChanges(List<IChange> into, PutMode putMode, Guid projectId, IReadOnlyDictionary<Guid, string> storedKinds)
+        public void AddChanges(List<IChange> into, Guid projectId, IReadOnlyDictionary<Guid, string> storedKinds)
         {
             if (changes is null) return;
-            foreach (var put in changes.Puts)
+            foreach (var record in changes.Creates)
             {
-                if (put.ProjectId != Guid.Empty && put.ProjectId != projectId)
+                AssertInProject(record, projectId);
+                if (storedKinds.TryGetValue(record.Id, out var storedAs))
                 {
-                    throw new ArgumentException($"The {name} {put.Id} names project {put.ProjectId}, not {projectId}", nameof(changes));
+                    throw new ArgumentException(storedAs == name
+                        ? $"The {name} {record.Id} is stored"
+                        : $"The {name} {record.Id} is stored as a {storedAs}", nameof(changes));
                 }
-                if (storedKinds.TryGetValue(put.Id, out var storedAs) && storedAs != name)
-                {
-                    throw new ArgumentException($"The {name} {put.Id} is stored as a {storedAs}", nameof(changes));
-                }
-                if (!_stored.TryGetValue(put.Id, out var current)) into.Add(create(put));
-                else if (current.ProjectId != projectId)
-                {
-                    throw new ArgumentException($"The {name} {put.Id} is stored in project {current.ProjectId}", nameof(changes));
-                }
-                else if (putMode == PutMode.Replace) into.Add(replace(put));
-                else if (diff(current, put) is { } patch) into.Add(patch);
+                into.Add(create(record));
+                _putIds.Add(record.Id);
             }
-            into.AddRange(changes.Deletes
-                .Where(id => _stored.TryGetValue(id, out var stored) && stored.ProjectId == projectId)
-                .Select(delete));
+            foreach (var (before, after) in changes.Updates)
+            {
+                if (before.Id != after.Id)
+                {
+                    throw new ArgumentException($"An update of the {name} {after.Id} reads as record {before.Id}", nameof(changes));
+                }
+                AssertInProject(after, projectId);
+                if (storedKinds.TryGetValue(after.Id, out var storedAs) && storedAs != name)
+                {
+                    throw new ArgumentException($"The {name} {after.Id} is stored as a {storedAs}", nameof(changes));
+                }
+                if (!_stored.TryGetValue(after.Id, out var current)) continue;
+                if (current.ProjectId != projectId)
+                {
+                    throw new ArgumentException($"The {name} {after.Id} is stored in project {current.ProjectId}", nameof(changes));
+                }
+                if (diff(before, after) is not { } patch) continue;
+                into.Add(patch);
+                _putIds.Add(after.Id);
+            }
+            _deleteIds.AddRange(StoredDeleteIds(projectId));
+            into.AddRange(_deleteIds.Select(delete));
+        }
+
+        /// <summary>
+        /// What the commit of <see cref="AddChanges"/>'s changes left of this kind, or null when
+        /// it changed none. The ids in <paramref name="taken"/> are reported deleted too. Each put
+        /// is read as stored.
+        /// </summary>
+        public async Task<AppliedRecords<T>?> Applied(AnalysisRepository repository, IEnumerable<Guid> taken)
+        {
+            // A later-dated create may have brought back a record that this commit deleted.
+            var revived = _deleteIds.Count == 0 ? [] : (await repository.StoredInAnyProject<T>(_deleteIds)).Select(r => r.Id).ToHashSet();
+            var deletes = _deleteIds.Where(id => !revived.Contains(id)).Concat(taken).ToList();
+            if (_putIds.Count == 0 && deletes.Count == 0) return null;
+            var puts = _putIds.Count == 0 ? [] : await repository.StoredInAnyProject<T>(_putIds);
+            return new AppliedRecords<T>(puts, deletes);
+        }
+
+        private void AssertInProject(T record, Guid projectId)
+        {
+            if (record.ProjectId != Guid.Empty && record.ProjectId != projectId)
+            {
+                throw new ArgumentException($"The {name} {record.Id} names project {record.ProjectId}, not {projectId}", nameof(changes));
+            }
         }
     }
 }

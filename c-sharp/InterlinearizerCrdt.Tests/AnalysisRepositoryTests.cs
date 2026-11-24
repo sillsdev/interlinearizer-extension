@@ -27,6 +27,14 @@ public class AnalysisRepositoryTests : CrdtTestBase
         Gloss = new MultiString { ["en"] = gloss },
     };
 
+    private static TokenAnalysis Tagged(TokenAnalysis analysis, string pos) => new()
+    {
+        Id = analysis.Id,
+        SurfaceText = analysis.SurfaceText,
+        Gloss = analysis.Gloss,
+        Pos = pos,
+    };
+
     private static TokenAnalysisLink TokenLink(Guid id, Guid analysisId, string tokenRef, string surfaceText,
         AssignmentStatus status = AssignmentStatus.Approved) => new()
         {
@@ -39,34 +47,34 @@ public class AnalysisRepositoryTests : CrdtTestBase
     private static ChangeSet FullAnalysis() => new()
     {
         Intent = "seed",
-        TokenAnalyses = RecordChanges<TokenAnalysis>.Put(
+        TokenAnalyses = RecordChanges<TokenAnalysis>.Create(
             Token(TaAnd, "and", "and"),
             Token(TaBeginning, "beginning", "start"),
             Token(TaUnlinked, "spare", "spare")),
-        TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(
+        TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(
             TokenLink(TlGenAnd, TaAnd, "GEN 1:1:0", "and"),
             TokenLink(TlExoAnd, TaAnd, "EXO 1:1:0", "and"),
             TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested)),
-        PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis
+        PhraseAnalyses = RecordChanges<PhraseAnalysis>.Create(new PhraseAnalysis
         {
             Id = PaInThe,
             SurfaceText = "in the",
             Gloss = new MultiString { ["en"] = "in" },
         }),
-        PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Put(new PhraseAnalysisLink
+        PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Create(new PhraseAnalysisLink
         {
             Id = PlInThe,
             AnalysisId = PaInThe,
             Tokens = [new TokenSnapshot("GEN 1:1:4", "the"), new TokenSnapshot("GEN 1:1:2", "in")],
             Status = AssignmentStatus.Approved,
         }),
-        SegmentAnalyses = RecordChanges<SegmentAnalysis>.Put(new SegmentAnalysis
+        SegmentAnalyses = RecordChanges<SegmentAnalysis>.Create(new SegmentAnalysis
         {
             Id = SaExo,
             SurfaceText = "And these",
             FreeTranslation = new MultiString { ["en"] = "And these are the names." },
         }),
-        SegmentAnalysisLinks = RecordChanges<SegmentAnalysisLink>.Put(new SegmentAnalysisLink
+        SegmentAnalysisLinks = RecordChanges<SegmentAnalysisLink>.Create(new SegmentAnalysisLink
         {
             Id = SlExo,
             AnalysisId = SaExo,
@@ -84,9 +92,9 @@ public class AnalysisRepositoryTests : CrdtTestBase
     private static ChangeSet EmptyMaps(Guid tokenId, Guid phraseId, Guid segmentId) => new()
     {
         Intent = "empty maps",
-        TokenAnalyses = RecordChanges<TokenAnalysis>.Put(new TokenAnalysis { Id = tokenId, SurfaceText = "and", Gloss = new(), Features = new() }),
-        PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis { Id = phraseId, SurfaceText = "in the", Gloss = new() }),
-        SegmentAnalyses = RecordChanges<SegmentAnalysis>.Put(new SegmentAnalysis
+        TokenAnalyses = RecordChanges<TokenAnalysis>.Create(new TokenAnalysis { Id = tokenId, SurfaceText = "and", Gloss = new(), Features = new() }),
+        PhraseAnalyses = RecordChanges<PhraseAnalysis>.Create(new PhraseAnalysis { Id = phraseId, SurfaceText = "in the", Gloss = new() }),
+        SegmentAnalyses = RecordChanges<SegmentAnalysis>.Create(new SegmentAnalysis
         {
             Id = segmentId,
             SurfaceText = "And these",
@@ -132,12 +140,16 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyReplacesAStoredRecordWholeDroppingFieldsThePutLacks()
+    public async Task ApplyClearsAFieldThatAnUpdateDrops()
     {
         await ApplyNext(FullAnalysis());
         var bare = new TokenAnalysis { Id = TaBeginning, SurfaceText = "beginning" };
 
-        await ApplyNext(new ChangeSet { Intent = "replace", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(bare) });
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "clear",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(Token(TaBeginning, "beginning", "start"), bare)),
+        });
 
         var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
         await Assert.That(stored.Gloss).IsNull();
@@ -146,7 +158,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyInPatchModeWritesOnlyWhatDiffersFromTheStoredRecord()
+    public async Task ApplyWritesOnlyWhatDiffersBetweenAnUpdatesBeforeAndAfter()
     {
         await ApplyNext(FullAnalysis());
         var put = new TokenAnalysis
@@ -156,7 +168,11 @@ public class AnalysisRepositoryTests : CrdtTestBase
             Gloss = new MultiString { ["en"] = "start", ["fr"] = "début" },
         };
 
-        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, PutMode.Patch);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "patch",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(Token(TaBeginning, "beginning", "start"), put)),
+        });
 
         var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
         await Assert.That(stored.SurfaceText).IsEqualTo("Beginning");
@@ -173,15 +189,71 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyInPatchModeClearsWhatThePutLacks()
+    public async Task ApplyKeepsAFieldThatAnUpdateLeavesAloneThoughAnotherCommitChangedItAfterTheRead()
     {
         await ApplyNext(FullAnalysis());
-        var put = new TokenAnalysis { Id = TaBeginning, SurfaceText = "beginning" };
+        var read = Token(TaBeginning, "beginning", "start");
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "tag",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, Tagged(read, "N"))),
+        });
 
-        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, PutMode.Patch);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "gloss",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, Token(TaBeginning, "beginning", "origin"))),
+        });
 
         var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
-        await Assert.That(stored.Gloss).IsNull();
+        await Assert.That(stored.Pos).IsEqualTo("N");
+        await Assert.That(stored.Gloss!["en"]).IsEqualTo("origin");
+    }
+
+    [Test]
+    public async Task ApplyKeepsBothFieldsOfCommitsThatChangeDifferentFieldsWhenTheEarlierArrivesLater()
+    {
+        await ApplyNext(FullAnalysis());
+        var read = Token(TaBeginning, "beginning", "start");
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "gloss",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, Token(TaBeginning, "beginning", "origin"))),
+        });
+
+        await ApplyAt(earlier, new ChangeSet
+        {
+            Intent = "tag",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, Tagged(read, "N"))),
+        });
+
+        var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
+        await Assert.That(stored.Pos).IsEqualTo("N");
+        await Assert.That(stored.Gloss!["en"]).IsEqualTo("origin");
+    }
+
+    [Test]
+    public async Task ApplyReportsAPutAsStoredThoughItsCommitLandsBeforeALaterOne()
+    {
+        await ApplyNext(FullAnalysis());
+        var read = Token(TaBeginning, "beginning", "start");
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "gloss",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, Token(TaBeginning, "beginning", "origin"))),
+        });
+
+        var reply = await ApplyAt(earlier, new ChangeSet
+        {
+            Intent = "tag",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, Tagged(read, "N"))),
+        });
+
+        var put = reply.TokenAnalyses!.Puts.Single();
+        await Assert.That(put.Pos).IsEqualTo("N");
+        await Assert.That(put.Gloss!["en"]).IsEqualTo("origin");
     }
 
     [Test]
@@ -199,24 +271,36 @@ public class AnalysisRepositoryTests : CrdtTestBase
     {
         await ApplyNext(FullAnalysis());
 
-        await ApplyNext(EmptyMaps(TaBeginning, PaInThe, SaExo));
+        var full = FullAnalysis();
+        var empty = EmptyMaps(TaBeginning, PaInThe, SaExo);
+
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "empty maps",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(
+                full.TokenAnalyses!.Creates.Single(a => a.Id == TaBeginning), empty.TokenAnalyses!.Creates.Single())),
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Update(new RecordUpdate<PhraseAnalysis>(
+                full.PhraseAnalyses!.Creates.Single(), empty.PhraseAnalyses!.Creates.Single())),
+            SegmentAnalyses = RecordChanges<SegmentAnalysis>.Update(new RecordUpdate<SegmentAnalysis>(
+                full.SegmentAnalyses!.Creates.Single(), empty.SegmentAnalyses!.Creates.Single())),
+        });
 
         await AssertMapsAbsent(TaBeginning, PaInThe, SaExo);
     }
 
     [Test]
-    public async Task ApplyInPatchModeWritesNothingForAPutEqualToTheStoredRecord()
+    public async Task ApplyWritesNothingForAnUpdateWhoseBeforeAndAfterAgree()
     {
         await ApplyNext(FullAnalysis());
-        var same = Token(TaBeginning, "beginning", "start");
+        var read = Token(TaBeginning, "beginning", "earlier");
 
-        await ApplyNext(new ChangeSet { Intent = "noop", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(same) }, PutMode.Patch);
+        await ApplyNext(new ChangeSet { Intent = "noop", TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, read)) });
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(2);
     }
 
     [Test]
-    public async Task ApplyInPatchModeComparesMorphemesByContent()
+    public async Task ApplyComparesMorphemesByContent()
     {
         var analysisId = Guid.NewGuid();
         await WriteNextChange(Fixtures.CreateTokenAnalysis(analysisId));
@@ -236,7 +320,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
             GlossSenseRef = stored.GlossSenseRef,
         };
 
-        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, PutMode.Patch);
+        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(stored, put)) });
 
         var changes = await DbContext.ChangeEntities.ToListAsync();
         var patch = changes.Select(c => c.Change).OfType<PatchTokenAnalysisChange>().Single();
@@ -248,25 +332,76 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyInPatchModeStillCreatesARecordNotStored()
+    public async Task ApplySkipsAnUpdateOfARecordNotStored()
     {
         var fresh = Guid.NewGuid();
 
-        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(fresh, "new", "new")) }, PutMode.Patch);
+        var reply = await ApplyNext(new ChangeSet
+        {
+            Intent = "patch",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(Token(fresh, "new", "new"), Token(fresh, "new", "newer"))),
+        });
 
-        await Assert.That(IdsOf(await Repository.GetTokenAnalyses([fresh]))).IsEquivalentTo([fresh]);
+        await Assert.That(reply.TokenAnalyses).IsNull();
+        await Assert.That(await Repository.GetTokenAnalyses([fresh])).IsEmpty();
     }
 
     [Test]
-    public async Task ApplyKeepsTheCreationTimeOfAReplacedRecord()
+    public async Task ApplySkipsAnUpdateMovingALinkNotStoredOntoAnAnalysisNotStored()
+    {
+        await ApplyNext(FullAnalysis());
+        var fresh = Guid.NewGuid();
+        var read = TokenLink(fresh, TaAnd, "GEN 1:1:0", "and");
+
+        var reply = await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(Token(TaAnd, "and", "and"), Token(TaAnd, "and", "also"))),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(fresh, Guid.NewGuid(), "GEN 1:1:0", "and"))),
+        });
+
+        await Assert.That(reply.TokenAnalysisLinks).IsNull();
+        await Assert.That((await Repository.GetTokenAnalyses([TaAnd])).Single().Gloss!["en"]).IsEqualTo("also");
+    }
+
+    [Test]
+    public async Task ApplyRefusesACreateOfAStoredRecordApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(async () => await ApplyNext(new ChangeSet
+        {
+            Intent = "createStored",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaAnd, "and", "also")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAnUpdateWhoseBeforeAndAfterNameDifferentRecords()
+    {
+        await ApplyNext(FullAnalysis());
+
+        await Assert.That(async () => await ApplyNext(new ChangeSet
+        {
+            Intent = "mismatched",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(Token(TaBeginning, "beginning", "start"), Token(TaAnd, "and", "also"))),
+        })).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task ApplyKeepsTheCreationTimeOfAnUpdatedRecord()
     {
         await ApplyNext(FullAnalysis());
         var created = await LatestCommit();
 
         await ApplyNext(new ChangeSet
         {
-            Intent = "replace",
-            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaAnd, "and", "also")),
+            Intent = "update",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(Token(TaAnd, "and", "and"), Token(TaAnd, "and", "also"))),
         });
 
         var stored = (await Repository.GetTokenAnalyses([TaAnd])).Single();
@@ -294,15 +429,29 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyRecreatesADeletedRecordThatIsPutAgain()
+    public async Task ApplyRecreatesADeletedRecordThatIsCreatedAgain()
     {
         await ApplyNext(FullAnalysis());
         await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
 
-        await ApplyNext(new ChangeSet { Intent = "restore", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaUnlinked, "spare", "spare")) });
+        await ApplyNext(new ChangeSet { Intent = "restore", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaUnlinked, "spare", "spare")) });
 
         var stored = (await Repository.GetTokenAnalyses([TaUnlinked])).Single();
         await Assert.That(stored.DeletedAt).IsNull();
+    }
+
+    [Test]
+    public async Task ApplyLeavesOutADeleteThatALaterCreateUndoes()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet { Intent = "restore", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaUnlinked, "spare", "spare")) });
+
+        var reply = await ApplyAt(earlier, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        await Assert.That(await Repository.GetTokenAnalyses([TaUnlinked])).Count().IsEqualTo(1);
+        await Assert.That(reply.TokenAnalyses).IsNull();
     }
 
     [Test]
@@ -350,6 +499,100 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyReportsALinkThatADeletedAnalysisTookThoughTheChangesDeleteItUnderAnotherKind()
+    {
+        await ApplyNext(FullAnalysis());
+
+        var reply = await ApplyNext(new ChangeSet
+        {
+            Intent = "deleteAnd",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaAnd),
+            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Delete(TlGenAnd),
+        });
+
+        await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenAnd, TlExoAnd]);
+        await Assert.That(reply.PhraseAnalysisLinks).IsNull();
+    }
+
+    [Test]
+    public async Task ApplyReportsALinkThatADeletedAnalysisTookBeforeALaterCommitMovedItOff()
+    {
+        await ApplyNext(FullAnalysis());
+        var earlier = NextDate();
+        var read = TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(TlGenBeginning, TaUnlinked, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested))),
+        });
+
+        var reply = await ApplyAt(earlier, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaBeginning) });
+
+        await Assert.That(await Repository.FindLinksToAnalyses([TaUnlinked]).ContinueWith(t => t.Result.TokenAnalysisLinks)).IsEmpty();
+        await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenBeginning]);
+    }
+
+    [Test]
+    public async Task ApplyDeletingAnAnalysisAtADateBeforeAnotherCommitWritesOneCommit()
+    {
+        await ApplyNext(FullAnalysis());
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet { Intent = "deleteLink", TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Delete(TlExoAnd) });
+        var commits = await DbContext.Commits.CountAsync();
+
+        await ApplyAt(earlier, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits + 1);
+    }
+
+    [Test]
+    public async Task ApplyReportsALinkThatADeletedAnalysisTookWhenAReplayDroppedTheLinksSnapshotOnIt()
+    {
+        await ApplyNext(FullAnalysis());
+        var unrelated = NextDate();
+        var onBeginning = TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        var onUnlinked = TokenLink(TlGenBeginning, TaUnlinked, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        var onAnd = TokenLink(TlGenBeginning, TaAnd, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(onBeginning, onUnlinked)),
+        });
+        var deleteAt = NextDate();
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(onUnlinked, onAnd)),
+        });
+        // Replaying the moves after this commit keeps no snapshot of the link on TaUnlinked.
+        await ApplyAt(unrelated, new ChangeSet { Intent = "deleteLink", TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Delete(TlExoAnd) });
+
+        var reply = await ApplyAt(deleteAt, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenBeginning]);
+    }
+
+    [Test]
+    public async Task ApplyReportsALinkThatADeletedAnalysisTookWhenAReplayChecksMoreLinksThanSqliteTakesParameters()
+    {
+        const int moreThanSqliteParameters = 32_767;
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "seedMany",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(
+                [.. Enumerable.Range(0, moreThanSqliteParameters).Select(i => TokenLink(Guid.NewGuid(), TaAnd, $"GEN 2:{i}:0", "and"))]),
+        });
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet { Intent = "deleteLink", TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Delete(TlExoAnd) });
+
+        var reply = await ApplyAt(earlier, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaBeginning) });
+
+        await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenBeginning]);
+    }
+
+    [Test]
     public async Task ApplyReportsEachPutAsStored()
     {
         var reply = await ApplyNext(FullAnalysis());
@@ -368,7 +611,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
 
         var reply = await ApplyNext(new ChangeSet { Intent = "deleteMissing", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(Guid.NewGuid()) });
 
-        await Assert.That(reply).IsEqualTo(new ChangeSet { Intent = "deleteMissing" });
+        await Assert.That(reply).IsEqualTo(new AppliedChangeSet { Intent = "deleteMissing" });
     }
 
     [Test]
@@ -379,7 +622,10 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await ApplyNext(new ChangeSet
         {
             Intent = "conflicting",
-            TokenAnalyses = new RecordChanges<TokenAnalysis>([Token(TaAnd, "and", "also")], [TaAnd]),
+            TokenAnalyses = new RecordChanges<TokenAnalysis>(
+                [],
+                [new RecordUpdate<TokenAnalysis>(Token(TaAnd, "and", "and"), Token(TaAnd, "and", "also"))],
+                [new DeletedRecord(TaAnd)]),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(2);
@@ -480,7 +726,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await ApplyNext(new ChangeSet
         {
             Intent = "linkOutsideCanon",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaAnd, "ZZZ front1:0", "and")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(TokenLink(Guid.NewGuid(), TaAnd, "ZZZ front1:0", "and")),
         });
 
         await Assert.That(await Repository.FindLinkedBooks()).IsEquivalentTo(["EXO", "GEN", "ZZZ"]);
@@ -514,7 +760,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await ApplyNext(new ChangeSet
         {
             Intent = "addCapitalized",
-            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(capitalized, "And", "and")),
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(capitalized, "And", "and")),
         });
 
         await Assert.That(IdsOf(await Repository.FindTokenAnalysesByForm([Refs.NormalizeSurfaceForm("AND")])))
@@ -561,8 +807,8 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await ApplyNext(new ChangeSet
         {
             Intent = "shared id",
-            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis { Id = shared, SurfaceText = "in" }),
-            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Put(link),
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Create(new PhraseAnalysis { Id = shared, SurfaceText = "in" }),
+            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Create(link),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(1);
@@ -583,7 +829,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await ApplyNext(new ChangeSet
         {
             Intent = "stored as another kind",
-            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Put(link),
+            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Create(link),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(2);
@@ -605,8 +851,8 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await other.Apply(new ChangeSet
         {
             Intent = "seed other",
-            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(taAnd, "and", "also")),
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(tlGenAnd, taAnd, "GEN 1:1:0", "and")),
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(taAnd, "and", "also")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(TokenLink(tlGenAnd, taAnd, "GEN 1:1:0", "and")),
         });
         return (other, taAnd, tlGenAnd);
     }
@@ -621,7 +867,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await other.Apply(new ChangeSet
         {
             Intent = "borrow",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaAnd, "GEN 1:1:9", "beginning")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(TokenLink(Guid.NewGuid(), TaAnd, "GEN 1:1:9", "beginning")),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
@@ -636,7 +882,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await ApplyNext(new ChangeSet
         {
             Intent = "link to nothing",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), Guid.NewGuid(), "GEN 1:1:9", "beginning")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(TokenLink(Guid.NewGuid(), Guid.NewGuid(), "GEN 1:1:9", "beginning")),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
@@ -652,7 +898,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await ApplyNext(new ChangeSet
         {
             Intent = "link to deleted",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaUnlinked, "GEN 1:1:9", "beginning")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(TokenLink(Guid.NewGuid(), TaUnlinked, "GEN 1:1:9", "beginning")),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
@@ -668,10 +914,95 @@ public class AnalysisRepositoryTests : CrdtTestBase
         {
             Intent = "link and delete",
             TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked),
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaUnlinked, "GEN 1:1:9", "beginning")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(TokenLink(Guid.NewGuid(), TaUnlinked, "GEN 1:1:9", "beginning")),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAnUpdateKeepingALinkOnAnAnalysisTheSameChangesDeleteApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(async () => await ApplyNext(new ChangeSet
+        {
+            Intent = "approve and delete",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaBeginning),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested),
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning"))),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAnUpdateKeepingALinkOnItsStoredAnalysisTheSameChangesDeleteThoughTheReadLinkNamesAnotherApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var read = TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(TlGenBeginning, TaUnlinked, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested))),
+        });
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(async () => await ApplyNext(new ChangeSet
+        {
+            Intent = "approve and delete",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning"))),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyKeepsALinkOnAnAnalysisTheChangesDeleteOnlyUnderAnotherKind()
+    {
+        await ApplyNext(FullAnalysis());
+
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approve",
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Delete(TaBeginning),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested),
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning"))),
+        });
+
+        var links = await Repository.FindLinksToAnalyses([TaBeginning]);
+        await Assert.That(links.TokenAnalysisLinks.Single().Status).IsEqualTo(AssignmentStatus.Approved);
+    }
+
+    [Test]
+    public async Task ApplyKeepsALinksUpdateWhoseReadAnalysisAnotherCommitMovedItOffAndDeleted()
+    {
+        await ApplyNext(FullAnalysis());
+        var read = TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(TlGenBeginning, TaUnlinked, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested))),
+        });
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaBeginning) });
+
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approve",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning"))),
+        });
+
+        var stored = (await Repository.FindLinksToAnalyses([TaUnlinked])).TokenAnalysisLinks.Single();
+        await Assert.That(stored.Id).IsEqualTo(TlGenBeginning);
+        await Assert.That(stored.Status).IsEqualTo(AssignmentStatus.Approved);
     }
 
     [Test]
@@ -684,7 +1015,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await ApplyNext(new ChangeSet
         {
             Intent = "reuse as another kind",
-            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis { Id = TaUnlinked, SurfaceText = "in the" }),
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Create(new PhraseAnalysis { Id = TaUnlinked, SurfaceText = "in the" }),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
@@ -702,7 +1033,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await other.Apply(new ChangeSet
         {
             Intent = "reuse in another project",
-            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaUnlinked, "spare", "spare")),
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaUnlinked, "spare", "spare")),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
@@ -747,7 +1078,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await Assert.That(async () => await other.Apply(new ChangeSet
         {
             Intent = "steal",
-            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaAnd, "and", "stolen")),
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaAnd, "and", "stolen")),
         })).Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
@@ -772,16 +1103,14 @@ public class AnalysisRepositoryTests : CrdtTestBase
     {
         var put = new TokenAnalysis { Id = Guid.NewGuid(), ProjectId = OtherProjectId, SurfaceText = "and" };
 
-        await Assert.That(async () => await ApplyNext(new ChangeSet { Intent = "misfiled", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }))
+        await Assert.That(async () => await ApplyNext(new ChangeSet { Intent = "misfiled", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(put) }))
             .Throws<ArgumentException>();
 
         await Assert.That(await DbContext.TokenAnalyses.CountAsync()).IsEqualTo(0);
     }
 
     [Test]
-    [Arguments(PutMode.Replace)]
-    [Arguments(PutMode.Patch)]
-    public async Task ApplyRefusesAPutOfAStoredRecordNamingAnotherProject(PutMode putMode)
+    public async Task ApplyRefusesAnUpdateOfAStoredRecordNamingAnotherProject()
     {
         await ApplyNext(FullAnalysis());
         var commits = await DbContext.Commits.CountAsync();
@@ -793,7 +1122,11 @@ public class AnalysisRepositoryTests : CrdtTestBase
             Gloss = new MultiString { ["en"] = "misfiled" },
         };
 
-        await Assert.That(async () => await ApplyNext(new ChangeSet { Intent = "misfiled", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, putMode))
+        await Assert.That(async () => await ApplyNext(new ChangeSet
+        {
+            Intent = "misfiled",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(Token(TaAnd, "and", "and"), put)),
+        }))
             .Throws<ArgumentException>();
 
         await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
@@ -834,7 +1167,9 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await ApplyNext(new ChangeSet
         {
             Intent = "approveTwice",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:0", "and")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested),
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:0", "and"))),
         });
 
         var counts = await Repository.CountApprovals([TaAnd, TaBeginning]);
@@ -850,8 +1185,8 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await ApplyNext(new ChangeSet
         {
             Intent = "approveTwice",
-            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaAnd, "and", "and"), Token(TaBeginning, "and", "also")),
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaAnd, "and", "and"), Token(TaBeginning, "and", "also")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(
                 TokenLink(larger, TaAnd, "GEN 1:1:0", "and"),
                 TokenLink(smaller, TaBeginning, "GEN 1:1:0", "and")),
         });
@@ -870,7 +1205,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await ApplyNext(new ChangeSet
         {
             Intent = "approvePhrasePayload",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(phraseNamed, PaInThe, "GEN 1:1:0", "and")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(TokenLink(phraseNamed, PaInThe, "GEN 1:1:0", "and")),
         });
         await Assert.That(IdsOf((await Repository.FindLinksByToken(["GEN 1:1:0"])).TokenAnalysisLinks)).Contains(phraseNamed);
 
@@ -898,7 +1233,9 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await ApplyNext(new ChangeSet
         {
             Intent = "approveTwice",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:0", "Beginning")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested),
+                TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:0", "Beginning"))),
         });
 
         var approvals = await Repository.FindApprovalsByForm(["and", "beginning"]);
@@ -914,8 +1251,10 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await ApplyNext(new ChangeSet
         {
             Intent = "moveLink",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(TlGenAnd, TaBeginning, "LEV 1:1:0", "and")),
-            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaAnd, "but", "but")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(new RecordUpdate<TokenAnalysisLink>(
+                TokenLink(TlGenAnd, TaAnd, "GEN 1:1:0", "and"), TokenLink(TlGenAnd, TaBeginning, "LEV 1:1:0", "and"))),
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(
+                Token(TaAnd, "and", "and"), Token(TaAnd, "but", "but"))),
         });
 
         await Assert.That(IdsOf((await Repository.FindLinksByToken(["GEN 1:1:0"])).TokenAnalysisLinks)).IsEmpty();

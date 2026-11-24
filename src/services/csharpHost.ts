@@ -1,5 +1,6 @@
 import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
+import { HOST_READY_LINE } from './csharpRepository';
 
 /** The parts of a started process the host's supervision uses. */
 export interface HostProcess {
@@ -34,9 +35,6 @@ export function hostExecutable(platform: string, arch: string): string | undefin
 
 /** What stops a host that never started. */
 const stopNothing = (): boolean => true;
-
-/** The line the host writes once it has registered its commands. */
-export const HOST_READY_LINE = 'Interlinearizer host ready';
 
 /**
  * Starts the interlinearizer's .NET process, which serves its C# commands over the Platform.Bible

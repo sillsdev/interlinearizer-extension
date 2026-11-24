@@ -13,19 +13,19 @@ public class PatchSegmentAnalysisChange(Guid entityId)
     : EditChange<SegmentAnalysis>(entityId), ISelfNamedType<PatchSegmentAnalysisChange>
 {
     /// <summary>
-    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// The patch that takes <paramref name="before"/> to <paramref name="after"/>, timestamps
     /// aside; null when nothing differs.
     /// </summary>
-    public static PatchSegmentAnalysisChange? Diff(SegmentAnalysis stored, SegmentAnalysis put)
+    public static PatchSegmentAnalysisChange? Diff(SegmentAnalysis before, SegmentAnalysis after)
     {
-        var patch = new PatchSegmentAnalysisChange(put.Id)
+        var patch = new PatchSegmentAnalysisChange(after.Id)
         {
-            SurfaceText = Patches.Changed(stored.SurfaceText, put.SurfaceText) ? new(put.SurfaceText) : default,
-            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
-            Producer = Patches.Changed(stored.Producer, put.Producer) ? new(put.Producer) : default,
-            SourceUser = Patches.Changed(stored.SourceUser, put.SourceUser) ? new(put.SourceUser) : default,
-            FreeTranslation = MultiStringPatch.Diff(stored.FreeTranslation, put.FreeTranslation),
-            LiteralTranslation = MultiStringPatch.Diff(stored.LiteralTranslation, put.LiteralTranslation),
+            SurfaceText = Patches.Changed(before.SurfaceText, after.SurfaceText) ? new(after.SurfaceText) : default,
+            Confidence = Patches.Changed(before.Confidence, after.Confidence) ? new(after.Confidence) : default,
+            Producer = Patches.Changed(before.Producer, after.Producer) ? new(after.Producer) : default,
+            SourceUser = Patches.Changed(before.SourceUser, after.SourceUser) ? new(after.SourceUser) : default,
+            FreeTranslation = MultiStringPatch.Diff(before.FreeTranslation, after.FreeTranslation),
+            LiteralTranslation = MultiStringPatch.Diff(before.LiteralTranslation, after.LiteralTranslation),
         };
         return patch.IsEmpty ? null : patch;
     }

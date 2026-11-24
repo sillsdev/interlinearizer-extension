@@ -263,6 +263,17 @@ describe('useNamedFetch', () => {
     );
   });
 
+  it('keeps the last answer outdated when fetching it again after a change fails', async () => {
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const fetch = jest.fn(async () => 'answer');
+    const { result } = await renderFetch({ current: 'a' }, fetch, { keepPrevious: true });
+    fetch.mockRejectedValueOnce(new Error('offline'));
+
+    await relayNamed(result.current.session.sessionId);
+
+    expect(result.current).toMatchObject({ answer: 'answer', outdated: true });
+  });
+
   describe('given a rule for which changes affect the answer', () => {
     /** A rule that lets through only the changes naming no forms. */
     const formless: ChangeAffects<string> = (change) => change.forms.length === 0;

@@ -18,6 +18,7 @@ import { relayChange } from './fake-host';
 import {
   changeNaming,
   failing,
+  holding,
   sessionIdOf,
   setLanguage,
   timesSent,
@@ -212,13 +213,20 @@ describe('useCatalogPositions', () => {
 
   it('offers no retry while the positions arrive', async () => {
     const wrapper = await wrapperOver();
+    const release = holding('interlinearizer.locateCatalogRows');
 
     const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
       wrapper,
     });
     await settle();
 
-    expect(result.current?.retry).toBeUndefined();
+    expect(result.current).toStrictEqual({
+      positions: undefined,
+      outdated: false,
+      retry: undefined,
+    });
+    release();
+    await settle();
   });
 
   it('offers a retry after a fetch of the positions fails', async () => {
@@ -232,6 +240,26 @@ describe('useCatalogPositions', () => {
 
     expect(result.current?.positions).toBeUndefined();
     expect(result.current?.retry).toEqual(expect.any(Function));
+  });
+
+  it('offers no retry while a retry of the positions is under way', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.locateCatalogRows');
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
+      wrapper,
+    });
+    await settle();
+    const release = holding('interlinearizer.locateCatalogRows');
+
+    act(() => result.current?.retry?.());
+
+    expect(result.current).toStrictEqual({
+      positions: undefined,
+      outdated: false,
+      retry: undefined,
+    });
+    release();
+    await settle();
   });
 });
 

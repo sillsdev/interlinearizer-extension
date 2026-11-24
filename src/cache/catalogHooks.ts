@@ -99,7 +99,7 @@ export type CatalogPositions = Readonly<{
   positions: ReadonlyMap<string, number> | undefined;
   /** Whether a change to the catalog has arrived since the fetch of `positions` began. */
   outdated: boolean;
-  /** Fetches the positions again; present only after a fetch of them failed. */
+  /** Fetches the positions again; present only after a fetch of them failed, until a retry is sent. */
   retry: (() => void) | undefined;
 }>;
 
@@ -122,7 +122,7 @@ export function useCatalogPositions(
   );
   const positions = fetched?.value;
   const outdated = fetched?.outdated;
-  const retry = fetched?.failed ? fetched.retry : undefined;
+  const retry = fetched?.failed && !fetched.retrying ? fetched.retry : undefined;
   return useMemo(
     () => (outdated === undefined ? undefined : { positions, outdated, retry }),
     [positions, outdated, retry],

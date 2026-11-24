@@ -60,6 +60,20 @@ export function changeNaming(sessionId: string, queries: AnalysisQuery[]): Sessi
   return { sessionId, changeId: 'c', books: [], analysisIds: [], forms: [], queries };
 }
 
+/** Holds every request of `command` until the returned release is called. */
+export function holding(command: string): () => void {
+  const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+    if (call[0] === command) await held;
+    return serve?.(...call);
+  });
+  return () => release();
+}
+
 /** Makes the host fail `command` from now on, answering the rest as before. */
 export function failing(command: string): void {
   const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();

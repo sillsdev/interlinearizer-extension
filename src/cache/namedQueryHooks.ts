@@ -135,7 +135,8 @@ export function useNamedFetch<T>(
             value: keepPrevious ? was?.value : undefined,
             failed: true,
             retries,
-            changes,
+            // A kept answer stays as outdated as it was, because no later fetch has answered.
+            changes: keepPrevious && was?.key === sessionKey ? was.changes : changes,
           }));
       }
       if (run.abandoned) return;

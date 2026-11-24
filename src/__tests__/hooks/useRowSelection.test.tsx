@@ -8,7 +8,14 @@ import useRowSelection from '../../hooks/useRowSelection';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { settle } from '../components/analysis-provider';
 import { readText, relayChange } from '../cache/fake-host';
-import { changeNaming, failing, sessionIdOf, timesSent, wrapperOver } from '../cache/hook-sessions';
+import {
+  changeNaming,
+  failing,
+  holding,
+  sessionIdOf,
+  timesSent,
+  wrapperOver,
+} from '../cache/hook-sessions';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 /** Three unused analyses, of the words "a", "b" and "c", which a surface sort lists in that order. */
@@ -47,20 +54,6 @@ async function renderSelection(initial = '') {
       await settle();
     },
   };
-}
-
-/** Holds every request to place rows until the returned release is called. */
-function holdLocating(): () => void {
-  const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
-  let release = () => {};
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
-    if (call[0] === 'interlinearizer.locateCatalogRows') await held;
-    return serve?.(...call);
-  });
-  return () => release();
 }
 
 describe('useRowSelection', () => {
@@ -177,7 +170,7 @@ describe('useRowSelection', () => {
 
   it('is unsettled until the host confirms the listing keeps the checked rows', async () => {
     const { result } = await renderSelection();
-    const release = holdLocating();
+    const release = holding('interlinearizer.locateCatalogRows');
 
     act(() => result.current.setChecked('ta-b', true));
 
@@ -191,7 +184,7 @@ describe('useRowSelection', () => {
     const { result } = await renderSelection();
     act(() => result.current.setChecked('ta-b', true));
     await settle();
-    const release = holdLocating();
+    const release = holding('interlinearizer.locateCatalogRows');
 
     act(() =>
       relayChange(
@@ -207,11 +200,14 @@ describe('useRowSelection', () => {
 
   it('offers no retry while the host confirms the checked rows', async () => {
     const { result } = await renderSelection();
+    const release = holding('interlinearizer.locateCatalogRows');
 
     act(() => result.current.setChecked('ta-b', true));
     await settle();
 
     expect(result.current.retry).toBeUndefined();
+    release();
+    await settle();
   });
 
   it('offers a retry, staying unsettled, when the host cannot confirm the checked rows', async () => {

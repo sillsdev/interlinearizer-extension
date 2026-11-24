@@ -1,8 +1,8 @@
 /// <reference types="jest" />
 
-import type { TextAnalysis } from 'interlinearizer';
+import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { AnalysisIndex } from '../../services/analysisIndex';
-import type { ChangeSet } from '../../types/analysis-repository';
+import { SUMMARY_PLACE_COUNT, type ChangeSet } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { BOOKLESS_PARTITION, splitAnalysisByBook } from '../../utils/analysis-book';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
@@ -343,6 +343,158 @@ describe('AnalysisIndex', () => {
     });
   });
 
+  describe('summarizeTokenAnalyses', () => {
+    /** A link from `tokenRef` to `analysisId`, approved unless `status` says otherwise. */
+    function tokenLink(
+      id: string,
+      analysisId: string,
+      tokenRef: string,
+      status: TokenAnalysisLink['status'] = 'approved',
+    ): TokenAnalysisLink {
+      return { ...link, id, analysisId, status, token: { tokenRef, surfaceText: 'and' } };
+    }
+
+    /** {@link analysis}, its token links replaced by `links`. */
+    function withLinks(...links: TokenAnalysisLink[]): TextAnalysis {
+      return { ...analysis(), tokenAnalysisLinks: links };
+    }
+
+    /** The summary of `analysisId` in `index`. */
+    function summaryOf(index: AnalysisIndex, analysisId: string) {
+      return index.summarizeTokenAnalyses().find(({ analysis: ta }) => ta.id === analysisId);
+    }
+
+    it('summarizes every stored token analysis, used or not', () => {
+      const index = new AnalysisIndex(analysis());
+
+      expect(ids(index.summarizeTokenAnalyses().map(({ analysis: ta }) => ta))).toStrictEqual([
+        'ta-And',
+        'ta-and',
+      ]);
+    });
+
+    it('counts the approving and stale tokens in each book', () => {
+      const index = new AnalysisIndex(
+        withLinks(
+          tokenLink('l-1', 'ta-and', 'GEN 1:1:0'),
+          tokenLink('l-2', 'ta-and', 'GEN 1:2:0'),
+          tokenLink('l-3', 'ta-and', 'EXO 1:1:0'),
+          tokenLink('l-4', 'ta-and', 'EXO 2:1:0', 'stale'),
+          tokenLink('l-5', 'ta-and', 'EXO 2:2:0', 'suggested'),
+        ),
+      );
+
+      expect(summaryOf(index, 'ta-and')).toMatchObject({
+        approvalsByBook: { GEN: 2, EXO: 1 },
+        staleByBook: { EXO: 1 },
+      });
+    });
+
+    it('counts a token once however many links carry it to the analysis', () => {
+      const index = new AnalysisIndex(
+        withLinks(tokenLink('l-1', 'ta-and', 'GEN 1:1:0'), tokenLink('l-2', 'ta-and', 'GEN 1:1:0')),
+      );
+
+      expect(summaryOf(index, 'ta-and')?.approvalsByBook).toStrictEqual({ GEN: 1 });
+    });
+
+    it('counts a token approved to two analyses toward both', () => {
+      const index = new AnalysisIndex(
+        withLinks(tokenLink('l-1', 'ta-and', 'GEN 1:1:0'), tokenLink('l-2', 'ta-And', 'GEN 1:1:0')),
+      );
+
+      expect(summaryOf(index, 'ta-and')?.approvalsByBook).toStrictEqual({ GEN: 1 });
+      expect(summaryOf(index, 'ta-And')?.approvalsByBook).toStrictEqual({ GEN: 1 });
+    });
+
+    it('lists the places of the first verses in canonical order, verses whole', () => {
+      const firstVerse = Array.from({ length: SUMMARY_PLACE_COUNT - 1 }, (_unused, i) => i * 4);
+      const index = new AnalysisIndex(
+        withLinks(
+          tokenLink('l-exo', 'ta-and', 'EXO 1:1:0'),
+          tokenLink('l-gen-3', 'ta-and', 'GEN 1:3:0'),
+          ...[8, 0, 4].map((at) => tokenLink(`l-gen-2-${at}`, 'ta-and', `GEN 1:2:${at}`)),
+          ...firstVerse.map((at) => tokenLink(`l-gen-1-${at}`, 'ta-and', `GEN 1:1:${at}`)),
+        ),
+      );
+
+      expect(summaryOf(index, 'ta-and')?.firstApprovals).toStrictEqual([
+        ...firstVerse.map((at) => `GEN 1:1:${at}`),
+        'GEN 1:2:0',
+        'GEN 1:2:4',
+        'GEN 1:2:8',
+      ]);
+    });
+
+    it('lists every place when fewer than a summary lists are held', () => {
+      const index = new AnalysisIndex(
+        withLinks(
+          tokenLink('l-1', 'ta-and', 'EXO 1:1:0', 'stale'),
+          tokenLink('l-2', 'ta-and', 'GEN 1:1:0', 'stale'),
+        ),
+      );
+
+      expect(summaryOf(index, 'ta-and')).toMatchObject({
+        firstApprovals: [],
+        firstStale: ['GEN 1:1:0', 'EXO 1:1:0'],
+      });
+    });
+
+    it('lists the same summaries while no apply changes one', () => {
+      const index = new AnalysisIndex(analysis());
+      const before = index.summarizeTokenAnalyses();
+
+      index.apply({ intent: 'phrase', phraseAnalyses: { puts: [], deletes: ['pa-1'] } });
+
+      expect(index.summarizeTokenAnalyses()).toBe(before);
+    });
+
+    it('summarizes again the analyses that an applied link names, before the apply and after', () => {
+      const index = new AnalysisIndex(analysis());
+      const [gen] = analysis().tokenAnalysisLinks;
+      index.summarizeTokenAnalyses();
+
+      index.apply({
+        intent: 'relink',
+        tokenAnalysisLinks: { puts: [{ ...gen, analysisId: 'ta-And' }], deletes: [] },
+      });
+
+      expect(summaryOf(index, 'ta-and')?.approvalsByBook).toStrictEqual({});
+      expect(summaryOf(index, 'ta-And')?.approvalsByBook).toStrictEqual({ GEN: 1 });
+    });
+
+    it('keeps the summary of an analysis that an apply leaves alone', () => {
+      const index = new AnalysisIndex(analysis());
+      const before = summaryOf(index, 'ta-And');
+
+      index.apply({ intent: 'unlink', tokenAnalysisLinks: { puts: [], deletes: ['tl-gen'] } });
+
+      expect(summaryOf(index, 'ta-And')).toBe(before);
+    });
+
+    it('summarizes a replaced analysis from its new record', () => {
+      const index = new AnalysisIndex(analysis());
+      const [and] = analysis().tokenAnalyses;
+      index.summarizeTokenAnalyses();
+
+      index.apply({
+        intent: 'gloss',
+        tokenAnalyses: { puts: [{ ...and, gloss: { en: 'also' } }], deletes: [] },
+      });
+
+      expect(summaryOf(index, 'ta-and')?.analysis.gloss).toStrictEqual({ en: 'also' });
+    });
+
+    it('drops the summary of a deleted analysis', () => {
+      const index = new AnalysisIndex(analysis());
+      index.summarizeTokenAnalyses();
+
+      index.apply({ intent: 'drop', tokenAnalyses: { puts: [], deletes: ['ta-and'] } });
+
+      expect(summaryOf(index, 'ta-and')).toBeUndefined();
+    });
+  });
+
   describe('differencesFrom', () => {
     it('reports none against the analysis it was built from', () => {
       expect(new AnalysisIndex(analysis()).differencesFrom(analysis())).toStrictEqual([]);
@@ -398,6 +550,72 @@ describe('AnalysisIndex', () => {
         key: 'ta-and',
         missing: ['GEN 1:1:0'],
         extra: [],
+      });
+    });
+
+    it('reports none for summaries while none are kept', () => {
+      const differences = new AnalysisIndex(emptyAnalysis()).differencesFrom(analysis());
+
+      expect(differences.some(({ index }) => index === 'tokenAnalyses by summary')).toBe(false);
+    });
+
+    it('reports each kept summary that differs from the analysis', () => {
+      const index = new AnalysisIndex(analysis());
+      index.summarizeTokenAnalyses();
+      const changed = analysis();
+      changed.tokenAnalysisLinks.shift();
+
+      expect(index.differencesFrom(changed)).toContainEqual({
+        index: 'tokenAnalyses by summary',
+        key: 'ta-and',
+        missing: ['ta-and'],
+        extra: ['ta-and'],
+      });
+    });
+
+    it('reports a summary the analysis gives that none is kept for', () => {
+      const index = new AnalysisIndex(emptyAnalysis());
+      index.summarizeTokenAnalyses();
+
+      expect(index.differencesFrom(analysis())).toContainEqual({
+        index: 'tokenAnalyses by summary',
+        key: 'ta-and',
+        missing: ['ta-and'],
+        extra: [],
+      });
+    });
+
+    it('reports no summary difference after a link from an earlier book moves to another analysis', () => {
+      const before = analysis();
+      before.tokenAnalysisLinks[1] = { ...before.tokenAnalysisLinks[1], status: 'approved' };
+      const index = new AnalysisIndex(before);
+      index.summarizeTokenAnalyses();
+      const changes: ChangeSet = {
+        intent: 'merge',
+        tokenAnalysisLinks: {
+          puts: [{ ...before.tokenAnalysisLinks[0], analysisId: 'ta-And' }],
+          deletes: [],
+        },
+      };
+
+      index.apply(changes);
+
+      expect(
+        index.differencesFrom(
+          applyChangeSet({ ...emptyDraft('src'), analysis: before }, changes).draft.analysis,
+        ),
+      ).toStrictEqual([]);
+    });
+
+    it('reports a kept summary of an analysis the analysis lacks', () => {
+      const index = new AnalysisIndex(analysis());
+      index.summarizeTokenAnalyses();
+
+      expect(index.differencesFrom(emptyAnalysis())).toContainEqual({
+        index: 'tokenAnalyses by summary',
+        key: 'ta-and',
+        missing: [],
+        extra: ['ta-and'],
       });
     });
 

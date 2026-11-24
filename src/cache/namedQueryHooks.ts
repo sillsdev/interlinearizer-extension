@@ -48,6 +48,11 @@ export type NamedFetch<T> = Readonly<{
   failed: boolean;
   /** Whether a retry after a failed fetch has yet to answer. */
   retrying: boolean;
+  /**
+   * Whether a change that names the query has arrived since the fetch of the held answer began. The
+   * answer may then no longer hold, until a later fetch answers.
+   */
+  outdated: boolean;
   /** Fetches again for the key. */
   retry: () => void;
 }>;
@@ -84,7 +89,14 @@ export function useNamedFetch<T>(
   const [followUps, setFollowUps] = useState(0);
   const running = useRef<{ abandoned: boolean; outdated: boolean } | undefined>(undefined);
   const [answer, setAnswer] = useState<
-    Readonly<{ key: string; value: T | undefined; failed: boolean; retries: number }> | undefined
+    | Readonly<{
+        key: string;
+        value: T | undefined;
+        failed: boolean;
+        retries: number;
+        changes: number;
+      }>
+    | undefined
   >(undefined);
   const held = useLatestRef({ sessionKey, answer, affects });
   const changes = useNamedChanges(query, (change) => {
@@ -114,7 +126,7 @@ export function useNamedFetch<T>(
     (async () => {
       try {
         const value = await fetchRef.current();
-        if (!run.abandoned) setAnswer({ key: sessionKey, value, failed: false, retries });
+        if (!run.abandoned) setAnswer({ key: sessionKey, value, failed: false, retries, changes });
       } catch (e) {
         logger.warn(`Interlinearizer: could not fetch ${what}`, e);
         if (!run.abandoned)
@@ -123,6 +135,8 @@ export function useNamedFetch<T>(
             value: keepPrevious ? was?.value : undefined,
             failed: true,
             retries,
+            // A kept answer stays as outdated as it was, because no later fetch has answered.
+            changes: keepPrevious && was?.key === sessionKey ? was.changes : changes,
           }));
       }
       if (run.abandoned) return;
@@ -137,12 +151,14 @@ export function useNamedFetch<T>(
       value: answer.value,
       failed: answer.failed,
       retrying: answer.failed && answer.retries !== retries,
+      outdated: answer.changes !== changes,
       retry,
     };
   return {
     value: keepPrevious ? answer?.value : undefined,
     failed: false,
     retrying: false,
+    outdated: false,
     retry,
   };
 }

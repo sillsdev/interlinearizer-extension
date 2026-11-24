@@ -1103,6 +1103,31 @@ export const commandDocs: Record<ExtensionCommand, MethodDocumentationWithoutNam
       schema: { type: 'string' },
     },
   },
+  'interlinearizer.locateCatalogRows': {
+    summary:
+      "Find where in a listing of a session's analysis catalog the named analyses, or all it keeps, sit",
+    params: sessionArgs(
+      {
+        name: 'request',
+        required: true,
+        summary:
+          'CatalogRowsRequest naming the search, sort, filters and current book, without a page',
+        schema: { type: 'object' },
+      },
+      {
+        name: 'analysisIds',
+        required: false,
+        summary: 'IDs of the token analyses to find; absent or null, every kept one',
+        schema: { type: ['array', 'null'], items: { type: 'string' } },
+      },
+    ),
+    result: {
+      name: 'return value',
+      summary:
+        'JSON-stringified [analysisId, index] pairs in listing order, leaving out analyses the request does not keep',
+      schema: { type: 'string' },
+    },
+  },
   'interlinearizer.getSelectionSummary': {
     summary:
       "Summarize the selected analyses of a session's draft: their use count, the glossed ones, and the merge they allow",

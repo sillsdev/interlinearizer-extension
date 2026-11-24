@@ -107,10 +107,20 @@ describe('useNamedFetch', () => {
     // Inside `act`, so that an answer resolving at once lands within it.
     return act(async () =>
       renderHook(
-        () => ({
-          answer: useNamedFetch('getConcordance', 'the answer', key.current, fetch, options)?.value,
-          session: usePageSession(),
-        }),
+        () => {
+          const fetched = useNamedFetch(
+            'getConcordance',
+            'the answer',
+            key.current,
+            fetch,
+            options,
+          );
+          return {
+            answer: fetched?.value,
+            outdated: fetched?.outdated,
+            session: usePageSession(),
+          };
+        },
         { wrapper },
       ),
     );
@@ -168,6 +178,40 @@ describe('useNamedFetch', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('marks the answer outdated while the fetch for a change that names the query is under way, until that fetch answers', async () => {
+    let release = () => {};
+    const fetch = jest.fn(async () => 'first');
+    const { result } = await renderFetch({ current: 'a' }, fetch);
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve('second');
+        }),
+    );
+
+    await relayNamed(result.current.session.sessionId);
+
+    expect(result.current).toMatchObject({ answer: 'first', outdated: true });
+    await act(async () => release());
+    expect(result.current).toMatchObject({ answer: 'second', outdated: false });
+  });
+
+  it('marks a new answer outdated when a change arrives during its fetch', async () => {
+    const releases: ((answer: string) => void)[] = [];
+    const fetch = jest.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+    const { result } = await renderFetch({ current: 'a' }, fetch);
+
+    await relayNamed(result.current.session.sessionId);
+    await act(async () => releases[0]('first'));
+
+    expect(result.current).toMatchObject({ answer: 'first', outdated: true });
+  });
+
   it("serves undefined for a new key until that key's answer arrives", async () => {
     const key: { current: string | undefined } = { current: 'a' };
     let release = () => {};
@@ -217,6 +261,17 @@ describe('useNamedFetch', () => {
       'Interlinearizer: could not fetch the answer',
       expect.any(Error),
     );
+  });
+
+  it('keeps the last answer outdated when fetching it again after a change fails', async () => {
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const fetch = jest.fn(async () => 'answer');
+    const { result } = await renderFetch({ current: 'a' }, fetch, { keepPrevious: true });
+    fetch.mockRejectedValueOnce(new Error('offline'));
+
+    await relayNamed(result.current.session.sessionId);
+
+    expect(result.current).toMatchObject({ answer: 'answer', outdated: true });
   });
 
   describe('given a rule for which changes affect the answer', () => {

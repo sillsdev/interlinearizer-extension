@@ -5599,6 +5599,29 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-selection-summary')).toHaveTextContent('60 checked');
     });
 
+    it('withholds the bulk actions until the host confirms a narrowed listing keeps the checked rows', async () => {
+      await renderPanel({ analysis: THREE_FORMS });
+      await select('ta-1', 'ta-2');
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.locateCatalogRows') await held;
+        return serve?.(...call);
+      });
+
+      await userEvent.type(searchBox(), 'λόγος');
+      await settle();
+
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
+      expect(screen.getByTestId('catalog-selection-delete')).toBeDisabled();
+      release();
+      await settle();
+      expect(screen.getByTestId('catalog-selection-delete')).toBeEnabled();
+    });
+
     it('offers nothing to check on a read-only analysis', async () => {
       await renderPanel({ analysis: THREE_FORMS, readOnly: true });
 

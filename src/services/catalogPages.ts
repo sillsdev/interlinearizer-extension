@@ -1,8 +1,16 @@
 import type { TextAnalysis } from 'interlinearizer';
+import { SUMMARY_PLACE_COUNT, type TokenAnalysisSummary } from '../types/analysis-repository';
 import {
   applyCatalogQuery,
+  buildCatalogEntries,
   buildCatalogRows,
+  catalogKeyOrder,
+  catalogOrder,
   deriveFacets,
+  narrowCatalog,
+  placeUsages,
+  type CatalogEntry,
+  type CatalogQuery,
   type CatalogFacets,
   type CatalogFilters,
   type CatalogRow,
@@ -11,6 +19,7 @@ import {
   type CatalogUsage,
 } from '../utils/analysis-query';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
+import { firstInOrder } from '../utils/first-in-order';
 import { collatorForTag } from '../utils/language-tags';
 
 /** What a view asks of the catalog: how to narrow and order the rows, and which of them to send. */
@@ -30,12 +39,12 @@ export interface CatalogPageRequest {
  * How many of a row's usages, and how many of its stale places, a catalog page carries. The rest
  * are read on demand, because a much-used analysis has thousands of places.
  */
-export const CATALOG_INLINE_PLACES = 12;
+export const CATALOG_INLINE_PLACES = SUMMARY_PLACE_COUNT;
 
 /** A catalog row as a page carries it. */
 export interface CatalogPageRow extends Omit<
   CatalogRow,
-  'usages' | 'staleLocations' | 'searchText'
+  'usages' | 'staleLocations' | 'searchText' | 'firstUsage' | 'staleBooks'
 > {
   /**
    * The row's first usages in document order, at most {@link CATALOG_INLINE_PLACES}. `usageCount`
@@ -47,8 +56,6 @@ export interface CatalogPageRow extends Omit<
    * `staleCount` counts every stale place.
    */
   firstStaleLocations: readonly CatalogUsage[];
-  /** How many places the analysis went stale at. */
-  staleCount: number;
   /**
    * Whether another row shares the row's surface form, normalized as the suggestion pool buckets
    * forms, so the two can be merged.
@@ -61,58 +68,132 @@ export interface CatalogPageRow extends Omit<
 /** One page of the rows a {@link CatalogPageRequest} keeps. */
 export interface CatalogPage {
   rows: readonly CatalogPageRow[];
-  /** The id of every row the request keeps, in order, on this page and off it. */
-  keptIds: readonly string[];
+  /** How many rows the request keeps, on this page and off it. */
+  keptCount: number;
   /** How many rows the draft holds, the query aside. */
   rowCount: number;
   /** The filter choices worth offering, taken against every row rather than the kept ones. */
   facets: CatalogFacets;
 }
 
-/**
- * Builds the catalog's rows over the analysis and returns the page the request asks for.
- *
- * @param analysis The analyses and links the rows are built from.
- * @param scope The values every row is derived relative to.
- * @param request How to narrow and order the rows, and which of them to send.
- * @param isFormInText Whether the text holds a normalized word form, `undefined` until the whole
- *   text has been read.
- */
-export function getCatalogPage(
-  analysis: Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>,
+/** How a {@link CatalogPageRequest} narrows and orders the entries. */
+function queryOf(
   scope: CatalogScope,
-  request: CatalogPageRequest,
+  request: Omit<CatalogPageRequest, 'offset' | 'count'>,
   isFormInText: (form: string) => boolean | undefined,
-): CatalogPage {
-  const rows = buildCatalogRows(analysis, scope);
-  const kept = applyCatalogQuery(rows, {
+): CatalogQuery {
+  return {
     search: request.search,
     sort: request.sort,
     filters: request.filters,
     surfaceCollator: collatorForTag(request.sourceLanguageTag),
     glossCollator: collatorForTag(scope.analysisLanguage),
     isFormInText,
-  });
-  const rowsByForm = Map.groupBy(rows, (row) => normalizeSurfaceForm(row.surfaceText));
-  const pageRow = (full: CatalogRow): CatalogPageRow => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave it out
-    const { usages, staleLocations, searchText, ...row } = full;
+  };
+}
+
+/** What the catalog derives from a list of summaries whatever the scope. */
+type ScopeFreeDerivations = Readonly<{
+  facets: CatalogFacets;
+  /** How many entries share each normalized surface form. */
+  formCounts: ReadonlyMap<string, number>;
+}>;
+
+/**
+ * What the catalog derives from each list of summaries, kept so that a list returned again is
+ * derived once.
+ */
+const scopeFreeBySummaries = new WeakMap<readonly TokenAnalysisSummary[], ScopeFreeDerivations>();
+
+function scopeFreeOf(
+  summaries: readonly TokenAnalysisSummary[],
+  entries: readonly CatalogEntry[],
+): ScopeFreeDerivations {
+  const kept = scopeFreeBySummaries.get(summaries);
+  if (kept) return kept;
+  const formCounts = new Map<string, number>();
+  entries.forEach(({ form }) => formCounts.set(form, (formCounts.get(form) ?? 0) + 1));
+  const derived = { facets: deriveFacets(entries), formCounts };
+  scopeFreeBySummaries.set(summaries, derived);
+  return derived;
+}
+
+/**
+ * Narrows and orders the catalog's entries as the request asks, and returns the page it asks for.
+ *
+ * @param summaries Every token analysis, with totals of the token links to it.
+ * @param scope The values every row is derived relative to.
+ * @param request How to narrow and order the rows, and which of them to send.
+ * @param isFormInText Whether the text holds a normalized word form, `undefined` until the whole
+ *   text has been read.
+ */
+export function getCatalogPage(
+  summaries: readonly TokenAnalysisSummary[],
+  scope: CatalogScope,
+  request: CatalogPageRequest,
+  isFormInText: (form: string) => boolean | undefined,
+): CatalogPage {
+  const entries = buildCatalogEntries(summaries, scope);
+  const query = queryOf(scope, request, isFormInText);
+  const kept = narrowCatalog(entries, query);
+  const end = request.offset + request.count;
+  // The sort key alone is far cheaper to compare than the text that breaks its ties, so it narrows
+  // the rows to those that can reach the page before they are put in order.
+  const byKey = catalogKeyOrder(query);
+  const last = firstInOrder(kept, end, byKey).at(-1);
+  const candidates = last ? kept.filter((entry) => byKey(entry, last) <= 0) : [];
+  const leading = firstInOrder(candidates, end, catalogOrder(query));
+  const page = leading.slice(request.offset);
+  const pageIds = new Set(page.map(({ analysisId }) => analysisId));
+  const summaryById = new Map(
+    summaries.flatMap((summary) =>
+      pageIds.has(summary.analysis.id) ? [[summary.analysis.id, summary] as const] : [],
+    ),
+  );
+  const { facets, formCounts } = scopeFreeOf(summaries, entries);
+  const pageRow = (entry: CatalogEntry): CatalogPageRow => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave them out
+    const { searchText, firstUsage, staleBooks, ...row } = entry;
+    const summary = summaryById.get(entry.analysisId);
+    /* v8 ignore next -- every entry is built from a summary */
+    if (!summary) throw new Error(`No summary for analysis ${entry.analysisId}`);
     return {
       ...row,
-      firstUsages: usages.slice(0, CATALOG_INLINE_PLACES),
-      firstStaleLocations: staleLocations.slice(0, CATALOG_INLINE_PLACES),
-      staleCount: staleLocations.length,
-      /* v8 ignore next -- every row is filed under its own form */
-      hasHomograph: (rowsByForm.get(normalizeSurfaceForm(row.surfaceText))?.length ?? 0) > 1,
-      isNotInText: isFormInText(row.form) === false,
+      firstUsages: placeUsages(summary.firstApprovals, scope).slice(0, CATALOG_INLINE_PLACES),
+      firstStaleLocations: placeUsages(summary.firstStale, scope).slice(0, CATALOG_INLINE_PLACES),
+      /* v8 ignore next -- every entry's form is counted */
+      hasHomograph: (formCounts.get(entry.form) ?? 0) > 1,
+      isNotInText: isFormInText(entry.form) === false,
     };
   };
   return {
-    rows: kept.slice(request.offset, request.offset + request.count).map(pageRow),
-    keptIds: kept.map((row) => row.analysisId),
-    rowCount: rows.length,
-    facets: deriveFacets(rows),
+    rows: page.map(pageRow),
+    keptCount: kept.length,
+    rowCount: entries.length,
+    facets,
   };
+}
+
+/**
+ * Where in the listing that `request` asks for each kept analysis sits, in listing order: those of
+ * `analysisIds`, or every kept one when `analysisIds` is absent. An analysis the request does not
+ * keep is left out.
+ */
+export function locateCatalogRows(
+  summaries: readonly TokenAnalysisSummary[],
+  scope: CatalogScope,
+  request: Omit<CatalogPageRequest, 'offset' | 'count'>,
+  isFormInText: (form: string) => boolean | undefined,
+  analysisIds?: readonly string[],
+): [analysisId: string, index: number][] {
+  const listing = applyCatalogQuery(
+    buildCatalogEntries(summaries, scope),
+    queryOf(scope, request, isFormInText),
+  );
+  const wanted = analysisIds && new Set(analysisIds);
+  return listing.flatMap(({ analysisId }, index): [string, number][] =>
+    !wanted || wanted.has(analysisId) ? [[analysisId, index]] : [],
+  );
 }
 
 /** How many distinct tokens approve any of the analyses. */

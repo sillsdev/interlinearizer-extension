@@ -7,6 +7,7 @@ import {
   getCatalogPlaces as catalogPlacesOf,
   getHomographRows as homographRowsOf,
   getRowsByIds,
+  locateCatalogRows as locateRows,
   restoreUntagged,
   summarizeSelection,
   type CatalogPageRequest,
@@ -146,11 +147,11 @@ export function sessionCatalogHandlers({
     return perfTimeAsync('getCatalogRows', () =>
       readSession(sessionId, 'serve the catalog', async (session) => {
         const { sourceProjectId } = session.scope;
-        const { analysis } = await session.repository.getWholeDraft();
+        const summaries = await session.repository.summarizeTokenAnalyses();
         const scope = await scopeOf(session, request.currentBook);
         const page = perfTime('getCatalogRows:query', () =>
           getCatalogPage(
-            analysis,
+            summaries,
             scope,
             { ...request, filters: restoreUntagged(request.filters) },
             (form) => isFormInText(sourceProjectId, form),
@@ -161,6 +162,25 @@ export function sessionCatalogHandlers({
         );
       }),
     );
+  }
+
+  async function locateCatalogRows({
+    sessionId,
+    request,
+    analysisIds,
+  }: ArgsOf<'interlinearizer.locateCatalogRows'>): Promise<string> {
+    return readSession(sessionId, 'locate catalog rows', async (session) => {
+      const { sourceProjectId } = session.scope;
+      const summaries = await session.repository.summarizeTokenAnalyses();
+      const located = locateRows(
+        summaries,
+        await scopeOf(session, request.currentBook),
+        { ...request, filters: restoreUntagged(request.filters) },
+        (form) => isFormInText(sourceProjectId, form),
+        analysisIds ?? undefined,
+      );
+      return JSON.stringify(located);
+    });
   }
 
   async function countUsages({
@@ -296,6 +316,7 @@ export function sessionCatalogHandlers({
 
   return {
     'interlinearizer.getCatalogRows': getCatalogRows,
+    'interlinearizer.locateCatalogRows': locateCatalogRows,
     'interlinearizer.previewDeletion': previewDeletion,
     'interlinearizer.getSelectionSummary': getSelectionSummary,
     'interlinearizer.countUsages': countUsages,

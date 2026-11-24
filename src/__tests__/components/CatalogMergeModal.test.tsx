@@ -39,6 +39,8 @@ function row(analysisId: string, overrides: Partial<CatalogRow> = {}): CatalogRo
     morphemes: [],
     usageCount: 0,
     usageCountInBook: 0,
+    staleCount: 0,
+    staleBooks: [],
     usages: [],
     staleLocations: [],
     books: new Set(),

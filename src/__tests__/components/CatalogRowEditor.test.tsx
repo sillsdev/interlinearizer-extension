@@ -555,6 +555,8 @@ describe('createGlossRetry', () => {
         ],
         usageCount: 1,
         usageCountInBook: 1,
+        staleCount: 0,
+        staleBooks: [],
         usages: [],
         staleLocations: [],
         books: new Set(),

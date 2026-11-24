@@ -83,6 +83,14 @@ describe('CatalogSelectionBar', () => {
     expect(onDelete).toHaveBeenCalled();
   });
 
+  it('disables every action while told to', () => {
+    renderBar({ count: 2, onMerge: jest.fn(), actionsDisabled: true });
+
+    expect(screen.getByTestId('catalog-selection-delete')).toBeDisabled();
+    expect(screen.getByTestId('catalog-selection-clear-gloss')).toBeDisabled();
+    expect(screen.getByTestId('catalog-selection-merge')).toBeDisabled();
+  });
+
   it('opens a merge of the checked rows when they can be merged', async () => {
     const onMerge = jest.fn();
     renderBar({ count: 2, onMerge });
@@ -96,5 +104,23 @@ describe('CatalogSelectionBar', () => {
     renderBar({ count: 2 });
 
     expect(screen.queryByTestId('catalog-selection-merge')).not.toBeInTheDocument();
+  });
+
+  it('notes that the checked rows could not be confirmed, offering to ask again', async () => {
+    const onRetry = jest.fn();
+    renderBar({ count: 1, onRetry });
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_selectionCheckFailed%',
+    );
+    await userEvent.click(screen.getByTestId('catalog-selection-retry'));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('offers no retry while nothing has failed', () => {
+    renderBar({ count: 1 });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-selection-retry')).not.toBeInTheDocument();
   });
 });

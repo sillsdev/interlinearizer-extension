@@ -8,6 +8,8 @@ export const SELECTION_BAR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_clearGlossChecked%',
   '%interlinearizer_analysisCatalog_delete%',
   '%interlinearizer_analysisCatalog_merge%',
+  '%interlinearizer_analysisCatalog_retry%',
+  '%interlinearizer_analysisCatalog_selectionCheckFailed%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogSelectionBar}. */
@@ -31,6 +33,13 @@ type CatalogSelectionBarProps = Readonly<{
   onMerge?: () => void;
   /** Deletes every checked analysis. */
   onDelete: () => void;
+  /** Whether to show the actions disabled. */
+  actionsDisabled?: boolean;
+  /**
+   * Asks again whether the listing keeps the checked rows. Present only after asking failed; the
+   * bar then notes the failure.
+   */
+  onRetry?: () => void;
 }>;
 
 /**
@@ -46,6 +55,8 @@ export default function CatalogSelectionBar({
   onClearGloss,
   onMerge,
   onDelete,
+  actionsDisabled = false,
+  onRetry,
 }: CatalogSelectionBarProps) {
   return (
     <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-1.5 tw:px-3 tw:py-2 tw:border-b tw:border-border">
@@ -67,10 +78,31 @@ export default function CatalogSelectionBar({
               { count, usageCount },
             )}
           </span>
-          <div className="tw:ms-auto tw:flex tw:gap-1.5">
+          <div className="tw:ms-auto tw:flex tw:items-center tw:gap-1.5">
+            {onRetry && (
+              <>
+                <span
+                  className="tw:text-sm tw:text-destructive"
+                  data-testid="catalog-selection-check-failed"
+                  role="alert"
+                >
+                  {localizedStrings['%interlinearizer_analysisCatalog_selectionCheckFailed%']}
+                </span>
+                <Button
+                  data-testid="catalog-selection-retry"
+                  onClick={onRetry}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  {localizedStrings['%interlinearizer_analysisCatalog_retry%']}
+                </Button>
+              </>
+            )}
             {onMerge && (
               <Button
                 data-testid="catalog-selection-merge"
+                disabled={actionsDisabled}
                 onClick={onMerge}
                 size="sm"
                 type="button"
@@ -82,6 +114,7 @@ export default function CatalogSelectionBar({
             {onClearGloss && (
               <Button
                 data-testid="catalog-selection-clear-gloss"
+                disabled={actionsDisabled}
                 onClick={onClearGloss}
                 size="sm"
                 type="button"
@@ -93,6 +126,7 @@ export default function CatalogSelectionBar({
             <Button
               className="tw:text-destructive"
               data-testid="catalog-selection-delete"
+              disabled={actionsDisabled}
               onClick={onDelete}
               size="sm"
               type="button"

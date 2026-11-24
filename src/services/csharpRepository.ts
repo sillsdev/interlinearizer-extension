@@ -20,8 +20,11 @@ import type {
   IndexDifference,
   RepositoryCapabilities,
   ScopeRecord,
+  TokenAnalysisSummary,
 } from '../types/analysis-repository';
 import { emptyDraft } from '../types/empty-factories';
+import { countTextOfEveryTag, type TextCountsByTag } from '../utils/text-counts';
+import { AnalysisIndex } from './analysisIndex';
 
 /**
  * Sends one of the C# host's commands with its one object of named fields, and resolves with what
@@ -149,6 +152,26 @@ export class CSharpRepository implements AnalysisRepository {
 
   findApprovalsByForm(normalizedForms: string[]): Promise<ApprovalsByForm> {
     return this.command('findApprovalsByForm', { keys: normalizedForms });
+  }
+
+  /**
+   * Every token analysis, with totals of the token links to it, derived from every record the host
+   * holds, since the host keeps no totals.
+   *
+   * @throws Whatever {@link exportAll} throws.
+   */
+  async summarizeTokenAnalyses(): Promise<readonly TokenAnalysisSummary[]> {
+    return new AnalysisIndex((await this.exportAll()).draft.analysis).summarizeTokenAnalyses();
+  }
+
+  /**
+   * How much text the analysis holds in each language, leaving out languages with none, counted
+   * over every record the host holds. Blank text counts as none.
+   *
+   * @throws Whatever {@link exportAll} throws.
+   */
+  async countTextByTag(): Promise<TextCountsByTag> {
+    return countTextOfEveryTag((await this.exportAll()).draft.analysis);
   }
 
   /** Nothing, since the host answers every lookup from its tables rather than a kept index. */

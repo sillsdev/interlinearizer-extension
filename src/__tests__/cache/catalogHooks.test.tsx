@@ -4,7 +4,9 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useMemo } from 'react';
 import {
+  fetchCatalogPositions,
   useCatalogPlaces,
+  useCatalogPositions,
   useCatalogRowsByIds,
   useCatalogView,
   useDeletionPreview,
@@ -16,6 +18,7 @@ import { relayChange } from './fake-host';
 import {
   changeNaming,
   failing,
+  holding,
   sessionIdOf,
   setLanguage,
   timesSent,
@@ -92,7 +95,7 @@ describe('useCatalogView', () => {
     rerender({ search: 'nothing matches this' });
     await settle();
 
-    expect(result.current.view?.keptIds).toStrictEqual([]);
+    expect(result.current.view?.keptCount).toBe(0);
   });
 
   it('keeps the last page on screen while the next request is fetched', async () => {
@@ -108,7 +111,7 @@ describe('useCatalogView', () => {
     await settle();
 
     rerender({ search: 'nothing matches this' });
-    const shown = result.current.view?.keptIds;
+    const shown = result.current.view?.rows.map((row) => row.analysisId);
     await settle();
 
     expect(shown).toStrictEqual(['ta-beginning']);
@@ -154,7 +157,7 @@ describe('useCatalogView', () => {
     const { retry } = result.current;
     const failedAt = retries.length;
 
-    act(() => retry?.());
+    await act(async () => retry?.());
     await settle();
 
     expect(timesSent('interlinearizer.getCatalogRows')).toBe(2);
@@ -164,13 +167,129 @@ describe('useCatalogView', () => {
   it('keeps the last page when fetching it again fails', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
-    await waitFor(() => expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']));
+    await waitFor(() => expect(result.current.view?.keptCount).toBe(1));
     failing('interlinearizer.getCatalogRows');
 
     relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogRows'), ['getCatalogRows']));
     await settle();
 
-    expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']);
+    expect(result.current.view?.rows.map((row) => row.analysisId)).toStrictEqual(['ta-beginning']);
+  });
+});
+
+describe('useCatalogPositions', () => {
+  it('places each named row the listing keeps, by id', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning', 'ta-x']), {
+      wrapper,
+    });
+    await settle();
+
+    expect(result.current?.positions).toStrictEqual(new Map([['ta-beginning', 0]]));
+  });
+
+  it('fetches nothing while no ids are named', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, undefined), { wrapper });
+    await settle();
+
+    expect(result.current).toBeUndefined();
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(0);
+  });
+
+  it('fetches again when a change to the session names the catalog', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.locateCatalogRows');
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.locateCatalogRows'), ['getCatalogRows']));
+    await settle();
+
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(before + 1);
+  });
+
+  it('offers no retry while the positions arrive', async () => {
+    const wrapper = await wrapperOver();
+    const release = holding('interlinearizer.locateCatalogRows');
+
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
+      wrapper,
+    });
+    await settle();
+
+    expect(result.current).toStrictEqual({
+      positions: undefined,
+      outdated: false,
+      retry: undefined,
+    });
+    release();
+    await settle();
+  });
+
+  it('offers a retry after a fetch of the positions fails', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.locateCatalogRows');
+
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
+      wrapper,
+    });
+    await settle();
+
+    expect(result.current?.positions).toBeUndefined();
+    expect(result.current?.retry).toEqual(expect.any(Function));
+  });
+
+  it('fetches the positions again and offers no retry while that retry is under way', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.locateCatalogRows');
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
+      wrapper,
+    });
+    await settle();
+    const before = timesSent('interlinearizer.locateCatalogRows');
+    const release = holding('interlinearizer.locateCatalogRows');
+
+    await act(async () => result.current?.retry?.());
+
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(before + 1);
+    expect(result.current).toStrictEqual({
+      positions: undefined,
+      outdated: false,
+      retry: undefined,
+    });
+    release();
+    await settle();
+  });
+
+  it('offers a retry again once a retry of the positions fails', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.locateCatalogRows');
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
+      wrapper,
+    });
+    await settle();
+    const before = timesSent('interlinearizer.locateCatalogRows');
+
+    await act(async () => result.current?.retry?.());
+    await settle();
+
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(before + 1);
+    expect(result.current?.retry).toEqual(expect.any(Function));
+  });
+});
+
+describe('fetchCatalogPositions', () => {
+  it('places every row the listing keeps when no ids are named', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+
+    await expect(
+      fetchCatalogPositions(sessionIdOf('interlinearizer.getCatalogRows'), REQUEST),
+    ).resolves.toStrictEqual([['ta-beginning', 0]]);
   });
 });
 
@@ -276,7 +395,7 @@ describe('useDeletionPreview', () => {
     jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => serve?.(...call));
 
     const { current } = result;
-    act(() => {
+    await act(async () => {
       if (current.status === 'failed') current.retry();
     });
 
@@ -289,12 +408,14 @@ describe('useDeletionPreview', () => {
     const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
     await waitFor(() => expect(result.current.status).toBe('failed'));
 
+    const release = holding('interlinearizer.previewDeletion');
     const { current } = result;
-    act(() => {
+    await act(async () => {
       if (current.status === 'failed') current.retry();
     });
 
     expect(result.current.status).toBe('loading');
+    release();
     await waitFor(() => expect(result.current.status).toBe('failed'));
   });
 
@@ -370,12 +491,14 @@ describe('useCatalogPlaces', () => {
     const { result } = renderHook(() => useCatalogPlaces('ta-beginning', 'GEN'), { wrapper });
     await waitFor(() => expect(result.current?.status).toBe('failed'));
 
+    const release = holding('interlinearizer.getCatalogPlaces');
     const { current } = result;
-    act(() => {
+    await act(async () => {
       if (current?.status === 'failed') current.retry();
     });
 
     expect(result.current?.status).toBe('loading');
+    release();
     await waitFor(() => expect(result.current?.status).toBe('failed'));
   });
 

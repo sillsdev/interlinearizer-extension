@@ -1,7 +1,9 @@
+import type { TextAnalysis } from 'interlinearizer';
 import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../services/csharpRepository';
 import type { AnalysisRepository } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { scopeRecordOf } from '../../utils/change-set';
+import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
 
 const PROJECT = 'project-1';
 const SOURCE = 'source-project';
@@ -117,6 +119,42 @@ describe('CSharpRepository', () => {
     ).rejects.toThrow('stores no scope record');
 
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('summarizes the token analyses from every record the host holds', async () => {
+    const { send, repository } = createRepository();
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'a', surfaceText: 'and' }],
+      tokenAnalysisLinks: [makeTokenLink('a', 'GEN 1:1:0', { surfaceText: 'and' })],
+    };
+    send.mockResolvedValue(analysis);
+
+    await expect(repository.summarizeTokenAnalyses()).resolves.toStrictEqual([
+      {
+        analysis: analysis.tokenAnalyses[0],
+        approvalsByBook: { GEN: 1 },
+        staleByBook: {},
+        firstApprovals: ['GEN 1:1:0'],
+        firstStale: [],
+      },
+    ]);
+    expect(send).toHaveBeenCalledWith(`${REPOSITORY_COMMAND_PREFIX}readAll`, {
+      sourceProjectId: SOURCE,
+      projectId: PROJECT,
+    });
+  });
+
+  it('counts the text in each language over every record the host holds', async () => {
+    const { send, repository } = createRepository();
+    send.mockResolvedValue({
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'a', surfaceText: 'and', gloss: { en: 'and' } }],
+    });
+
+    await expect(repository.countTextByTag()).resolves.toStrictEqual({
+      en: { glosses: 1, freeTranslations: 0 },
+    });
   });
 
   it('exports every record the host holds in an otherwise empty draft', async () => {

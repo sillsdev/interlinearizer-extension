@@ -1145,6 +1145,24 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Finds where in a page request's listing of a session's analysis catalog each kept analysis
+     * sits: those of `analysisIds`, or every kept one when `analysisIds` is absent or `null`.
+     *
+     * @returns A JSON string of `[analysisId, index]` pairs in listing order, leaving out an
+     *   analysis the request does not keep.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.locateCatalogRows': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        request: Omit<
+          import('../services/sessionCatalogHandlers').CatalogRowsRequest,
+          'offset' | 'count'
+        >;
+        analysisIds?: readonly string[] | null;
+      },
+    ) => Promise<string>;
+
+    /**
      * Summarizes the selected analyses of a session's draft for a bulk action over them. A tie in
      * use for the merge's survivor goes to the analysis named first.
      *

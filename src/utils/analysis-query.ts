@@ -10,6 +10,7 @@ import type {
   TokenAnalysisLink,
 } from 'interlinearizer';
 import type { Collator } from 'platform-bible-utils';
+import type { TokenAnalysisSummary } from '../types/analysis-repository';
 import { bookOfRef } from './analysis-book';
 import { normalizeSurfaceForm } from './analysis-identity';
 import { multiStringText } from './multi-string';
@@ -37,8 +38,11 @@ export interface HeadingPlacement {
   order: number;
 }
 
-/** One distinct token analysis, with the usage data the catalog lists it by. */
-export interface CatalogRow {
+/**
+ * One distinct token analysis, with the totals the catalog narrows, orders and offers filters by.
+ * It lists no places beyond the first, so it costs the same however much the analysis is used.
+ */
+export interface CatalogEntry {
   analysisId: string;
   surfaceText: string;
   /** `surfaceText` normalized as the text's word forms are, for finding it in the text. */
@@ -63,17 +67,27 @@ export interface CatalogRow {
   usageCount: number;
   /** Places in the scope's book where the analysis is applied. */
   usageCountInBook: number;
-  /** Every place the analysis is applied, in document order. */
-  usages: readonly CatalogUsage[];
+  /** The first place the analysis is applied, in document order. */
+  firstUsage?: CatalogUsage;
   /**
-   * Every place the analysis was applied until the text there changed under it, in document order.
-   * Counted toward no usage count, a stale place not being one where the analysis applies.
+   * How many places the analysis went stale at. Counted toward no usage count, a stale place not
+   * being one where the analysis applies.
    */
-  staleLocations: readonly CatalogUsage[];
+  staleCount: number;
+  /** Books the analysis is stale in. */
+  staleBooks: readonly string[];
   /** Books the analysis is used or stale in. */
   books: ReadonlySet<string>;
   /** Everything a search query is matched against, folded. */
   searchText: string;
+}
+
+/** A {@link CatalogEntry}, with every place the analysis is applied or stale at. */
+export interface CatalogRow extends CatalogEntry {
+  /** Every place the analysis is applied, in document order. */
+  usages: readonly CatalogUsage[];
+  /** Every place the analysis was applied until the text there changed under it, in document order. */
+  staleLocations: readonly CatalogUsage[];
 }
 
 /** How the rows are ordered. */
@@ -194,7 +208,7 @@ export function placeHeadings(
  * Every part is taken as the tokenizer wrote it rather than validated: a ref reaching here names a
  * token of a tokenized book, never anything a user typed.
  */
-function parseUsage(
+export function parseUsage(
   tokenRef: string,
   headingPlacements: ReadonlyMap<string, HeadingPlacement> | undefined,
 ): CatalogUsage {
@@ -233,7 +247,7 @@ function offsetInVerse(usage: CatalogUsage): number {
  * canonical. A code outside the canon has no number to be placed by and would lead the list rather
  * than trail it.
  */
-function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
+export function compareDocumentOrder(a: CatalogUsage, b: CatalogUsage): number {
   return (
     Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book) ||
     a.chapter - b.chapter ||
@@ -338,41 +352,154 @@ export function buildCatalogRows(
     const usages = usagesByAnalysisId.get(ta.id) ?? [];
     const staleLocations = staleByAnalysisId.get(ta.id) ?? [];
     return {
-      analysisId: ta.id,
-      surfaceText: ta.surfaceText,
-      form: normalizeSurfaceForm(ta.surfaceText),
-      gloss: multiStringText(ta.gloss, scope.analysisLanguage),
-      glosses: ta.gloss,
-      glossSenseRef: ta.glossSenseRef,
-      morphemes: ta.morphemes ?? [],
-      morphemesStale: ta.morphemesStale,
-      pos: ta.pos,
-      features: ta.features,
-      confidence: ta.confidence,
+      ...payloadFields(ta, scope),
       usageCount: usages.length,
       usageCountInBook: usages.filter((u) => u.book === scope.currentBook).length,
+      ...(usages[0] && { firstUsage: usages[0] }),
+      staleCount: staleLocations.length,
+      staleBooks: [...new Set(staleLocations.map((u) => u.book))],
+      books: new Set([...usages, ...staleLocations].map((u) => u.book)),
       usages,
       staleLocations,
-      books: new Set([...usages, ...staleLocations].map((u) => u.book)),
-      searchText: buildSearchText(ta),
     };
   });
 }
 
+/** The fields of a catalog entry that the analysis itself carries, apart from where it is used. */
+function payloadFields(ta: TokenAnalysis, scope: CatalogScope) {
+  return {
+    analysisId: ta.id,
+    surfaceText: ta.surfaceText,
+    form: normalizeSurfaceForm(ta.surfaceText),
+    gloss: multiStringText(ta.gloss, scope.analysisLanguage),
+    glosses: ta.gloss,
+    glossSenseRef: ta.glossSenseRef,
+    morphemes: ta.morphemes ?? [],
+    morphemesStale: ta.morphemesStale,
+    pos: ta.pos,
+    features: ta.features,
+    confidence: ta.confidence,
+    searchText: buildSearchText(ta),
+  };
+}
+
+/** Adds up a count kept per book. */
+function sumOf(countsByBook: Readonly<Record<string, number>>): number {
+  return Object.values(countsByBook).reduce((total, count) => total + count, 0);
+}
+
+/**
+ * Places the tokens that `tokenRefs` name, in document order, their headings placed as the scope
+ * places them.
+ */
+export function placeUsages(tokenRefs: readonly string[], scope: CatalogScope): CatalogUsage[] {
+  return tokenRefs
+    .map((tokenRef) => parseUsage(tokenRef, scope.headingPlacements))
+    .sort(compareDocumentOrder);
+}
+
+/**
+ * The first of the places that `tokenRefs` name, which must be in document order but for where
+ * headings sit in their verses.
+ */
+function firstPlace(
+  tokenRefs: readonly string[],
+  headingPlacements: CatalogScope['headingPlacements'],
+): CatalogUsage | undefined {
+  if (tokenRefs.length === 0) return undefined;
+  let first = parseUsage(tokenRefs[0], headingPlacements);
+  // Only headings move within their verse once placed, so the first place is in the first verse.
+  for (let i = 1; i < tokenRefs.length; i += 1) {
+    const next = parseUsage(tokenRefs[i], headingPlacements);
+    if (next.book !== first.book || next.chapter !== first.chapter || next.verse !== first.verse)
+      break;
+    if (compareDocumentOrder(next, first) < 0) first = next;
+  }
+  return first;
+}
+
+/** An entry kept against its summary, with what it was derived relative to. */
+type KeptEntry = Readonly<{
+  entry: CatalogEntry;
+  analysisLanguage: string;
+  currentBook: string;
+  /** Whether where the scope places headings can change the entry's first usage. */
+  placesHeadings: boolean;
+}>;
+
+/**
+ * Each summary's entry, kept so that a summary shared between calls is derived again only for
+ * another scope.
+ */
+const keptEntries = new WeakMap<TokenAnalysisSummary, KeptEntry>();
+
+/** Whether a heading's token is among the first verse's approvals, so placing it may reorder them. */
+function headingInFirstVerse(firstApprovals: readonly string[]): boolean {
+  const first = firstPlace(firstApprovals, undefined);
+  return firstApprovals.some((tokenRef) => {
+    const usage = parseUsage(tokenRef, undefined);
+    return (
+      usage.inHeading &&
+      usage.book === first?.book &&
+      usage.chapter === first.chapter &&
+      usage.verse === first.verse
+    );
+  });
+}
+
+function entryOf(summary: TokenAnalysisSummary, scope: CatalogScope): CatalogEntry {
+  const kept = keptEntries.get(summary);
+  if (
+    kept &&
+    !kept.placesHeadings &&
+    kept.analysisLanguage === scope.analysisLanguage &&
+    kept.currentBook === scope.currentBook
+  )
+    return kept.entry;
+  const { analysis, approvalsByBook, staleByBook, firstApprovals } = summary;
+  const firstUsage = firstPlace(firstApprovals, scope.headingPlacements);
+  const entry: CatalogEntry = {
+    ...payloadFields(analysis, scope),
+    usageCount: sumOf(approvalsByBook),
+    usageCountInBook: approvalsByBook[scope.currentBook] ?? 0,
+    ...(firstUsage && { firstUsage }),
+    staleCount: sumOf(staleByBook),
+    staleBooks: Object.keys(staleByBook),
+    books: new Set([...Object.keys(approvalsByBook), ...Object.keys(staleByBook)]),
+  };
+  keptEntries.set(summary, {
+    entry,
+    analysisLanguage: scope.analysisLanguage,
+    currentBook: scope.currentBook,
+    placesHeadings: headingInFirstVerse(firstApprovals),
+  });
+  return entry;
+}
+
+/**
+ * Derives one entry per summarized token analysis, as {@link buildCatalogRows} derives its rows but
+ * from the totals a repository keeps rather than from every link. Entries are kept against their
+ * summaries, so a summary must not change once passed.
+ */
+export function buildCatalogEntries(
+  summaries: readonly TokenAnalysisSummary[],
+  scope: CatalogScope,
+): readonly CatalogEntry[] {
+  return summaries.map((summary) => entryOf(summary, scope));
+}
+
 /** Orders two rows by where each is first applied, an unused analysis coming after every used one. */
-function compareFirstUsage(a: CatalogRow, b: CatalogRow): number {
-  const [firstA] = a.usages;
-  const [firstB] = b.usages;
-  if (!firstA) return firstB ? 1 : 0;
-  if (!firstB) return -1;
-  return compareDocumentOrder(firstA, firstB);
+function compareFirstUsage(a: CatalogEntry, b: CatalogEntry): number {
+  if (!a.firstUsage) return b.firstUsage ? 1 : 0;
+  if (!b.firstUsage) return -1;
+  return compareDocumentOrder(a.firstUsage, b.firstUsage);
 }
 
 /**
  * Orders two rows by gloss, an analysis with none in the scope's language coming after every one
  * that has one.
  */
-function compareGloss(a: CatalogRow, b: CatalogRow, glossCollator: Collator): number {
+function compareGloss(a: CatalogEntry, b: CatalogEntry, glossCollator: Collator): number {
   if (!a.gloss) return b.gloss ? 1 : 0;
   if (!b.gloss) return -1;
   return glossCollator.compare(a.gloss, b.gloss);
@@ -410,8 +537,8 @@ export interface CatalogFacets {
  * `undefined` when fewer than two are present.
  */
 function multiValueFacet<T>(
-  rows: readonly CatalogRow[],
-  valuesOf: (row: CatalogRow) => Iterable<T>,
+  rows: readonly CatalogEntry[],
+  valuesOf: (row: CatalogEntry) => Iterable<T>,
   compare?: (a: T, b: T) => number,
 ): readonly T[] | undefined {
   const distinct = new Set(rows.flatMap((row) => [...valuesOf(row)]));
@@ -438,8 +565,8 @@ function valueChoices<T>(
  * the rows are all in one state.
  */
 function singleValueFacet<T>(
-  rows: readonly CatalogRow[],
-  valueOf: (row: CatalogRow) => T | undefined,
+  rows: readonly CatalogEntry[],
+  valueOf: (row: CatalogEntry) => T | undefined,
   compare?: (a: T, b: T) => number,
 ): readonly (T | undefined)[] | undefined {
   const present = new Set<T>();
@@ -456,7 +583,7 @@ function singleValueFacet<T>(
  * Collects a facet per feature name that earns one, or `undefined` when no name does. A row counts
  * as untagged for every name its own feature map omits.
  */
-function featureFacets(rows: readonly CatalogRow[]): CatalogFacets['features'] {
+function featureFacets(rows: readonly CatalogEntry[]): CatalogFacets['features'] {
   const tallies = new Map<string, { values: Set<string>; taggedRows: number }>();
   rows.forEach((row) => {
     Object.entries(row.features ?? {}).forEach(([name, value]) => {
@@ -483,11 +610,11 @@ const CONFIDENCE_ORDER: readonly Confidence[] = ['high', 'medium', 'low', 'guess
 /**
  * Derives the filter facets worth offering against these rows.
  *
- * @param rows Every row {@link buildCatalogRows} built, never what {@link applyCatalogQuery} narrowed
- *   them to: a facet judged against the rows its own selection kept collapses as soon as that
- *   selection is made, leaving nothing to widen it back by.
+ * @param rows Every entry the catalog lists, never what {@link applyCatalogQuery} narrowed them to:
+ *   a facet judged against the rows its own selection kept collapses as soon as that selection is
+ *   made, leaving nothing to widen it back by.
  */
-export function deriveFacets(rows: readonly CatalogRow[]): CatalogFacets {
+export function deriveFacets(rows: readonly CatalogEntry[]): CatalogFacets {
   return {
     books: multiValueFacet(
       rows,
@@ -608,7 +735,7 @@ function passesValue<T>(
 }
 
 /** Whether the row satisfies every feature named in the selection, each judged on its own values. */
-function passesFeatures(row: CatalogRow, selected: CatalogFilters['features']): boolean {
+function passesFeatures(row: CatalogEntry, selected: CatalogFilters['features']): boolean {
   if (!selected) return true;
   return Object.entries(selected).every(([name, values]) =>
     passesValue(values, row.features?.[name]),
@@ -617,7 +744,7 @@ function passesFeatures(row: CatalogRow, selected: CatalogFilters['features']): 
 
 /** Whether the row survives every active filter. */
 function passesFilters(
-  row: CatalogRow,
+  row: CatalogEntry,
   filters: CatalogFilters,
   isFormInText: ((form: string) => boolean | undefined) | undefined,
 ): boolean {
@@ -626,11 +753,8 @@ function passesFilters(
   if (!passesValue(filters.pos, row.pos)) return false;
   if (!passesValue(filters.confidence, row.confidence)) return false;
   if (!passesFeatures(row, filters.features)) return false;
-  if (filters.zeroUsages && (row.usageCount > 0 || row.staleLocations.length > 0)) return false;
-  if (
-    filters.stale &&
-    !row.staleLocations.some((place) => !isActive(books) || books.includes(place.book))
-  )
+  if (filters.zeroUsages && (row.usageCount > 0 || row.staleCount > 0)) return false;
+  if (filters.stale && !row.staleBooks.some((book) => !isActive(books) || books.includes(book)))
     return false;
   if (filters.notInText && isFormInText?.(row.form) !== false) return false;
   if (filters.gloss && (row.gloss !== '') !== (filters.gloss === 'has')) return false;
@@ -647,7 +771,7 @@ function passesFilters(
  *
  * A key added to {@link CatalogSort} fails to compile here until this orders it too.
  */
-function compareBySortKey(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
+function compareBySortKey(a: CatalogEntry, b: CatalogEntry, query: CatalogQuery): number {
   switch (query.sort) {
     case 'usageCount':
       return b.usageCount - a.usageCount;
@@ -664,7 +788,7 @@ function compareBySortKey(a: CatalogRow, b: CatalogRow, query: CatalogQuery): nu
 }
 
 /** Orders two rows by their form ascending, falling back to their gloss. */
-function compareByText(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
+function compareByText(a: CatalogEntry, b: CatalogEntry, query: CatalogQuery): number {
   return (
     query.surfaceCollator.compare(a.surfaceText, b.surfaceText) ||
     compareGloss(a, b, query.glossCollator)
@@ -673,32 +797,53 @@ function compareByText(a: CatalogRow, b: CatalogRow, query: CatalogQuery): numbe
 
 /**
  * Orders two rows for the listing, falling back to their text where the sort key cannot separate
- * them, so the order holds still as unrelated analyses are recorded.
+ * them, and then to their ids. The order holds still as unrelated analyses are recorded, and never
+ * ties.
  */
-function compareBySort(a: CatalogRow, b: CatalogRow, query: CatalogQuery): number {
-  return compareBySortKey(a, b, query) || compareByText(a, b, query);
+function compareBySort(a: CatalogEntry, b: CatalogEntry, query: CatalogQuery): number {
+  return (
+    compareBySortKey(a, b, query) ||
+    compareByText(a, b, query) ||
+    (a.analysisId < b.analysisId ? -1 : Number(a.analysisId > b.analysisId))
+  );
 }
 
 /**
- * Narrows rows to those the query's search and filters keep, in the order it asks for.
+ * Narrows rows to those the query's search and filters keep, in the order given.
  *
  * Separate from {@link buildCatalogRows} so a keystroke re-runs only this pass: the analysis changes
  * on every gloss blur, and rebuilding rows per keystroke would re-fold unchanged text.
  */
-export function applyCatalogQuery(
-  rows: readonly CatalogRow[],
+export function narrowCatalog<Entry extends CatalogEntry>(
+  rows: readonly Entry[],
   query: CatalogQuery,
-): readonly CatalogRow[] {
+): Entry[] {
   // A line ending typed or pasted into the query reads as the ordinary space it stands for, rather
   // than as the separator a match may not span, so it is collapsed here rather than inside
   // foldForSearch, which also folds each row's search text, where the separators survive. Trimming
   // follows the fold rather than preceding it: a spacing diacritic decomposes to a bare space, so
   // it is whitespace only once folded.
   const search = foldForSearch(collapseLineEndings(query.search)).trim();
-  return rows
-    .filter(
-      (row) =>
-        row.searchText.includes(search) && passesFilters(row, query.filters, query.isFormInText),
-    )
-    .toSorted((a, b) => compareBySort(a, b, query));
+  return rows.filter(
+    (row) =>
+      row.searchText.includes(search) && passesFilters(row, query.filters, query.isFormInText),
+  );
+}
+
+/** Orders two rows by the query's sort key alone, leaving rows it cannot separate tied. */
+export function catalogKeyOrder(query: CatalogQuery): (a: CatalogEntry, b: CatalogEntry) => number {
+  return (a, b) => compareBySortKey(a, b, query);
+}
+
+/** Orders two rows as the query asks. Rows with different ids never tie. */
+export function catalogOrder(query: CatalogQuery): (a: CatalogEntry, b: CatalogEntry) => number {
+  return (a, b) => compareBySort(a, b, query);
+}
+
+/** Narrows rows to those the query's search and filters keep, in the order it asks for. */
+export function applyCatalogQuery<Entry extends CatalogEntry>(
+  rows: readonly Entry[],
+  query: CatalogQuery,
+): readonly Entry[] {
+  return narrowCatalog(rows, query).sort(catalogOrder(query));
 }

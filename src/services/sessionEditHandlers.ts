@@ -24,7 +24,6 @@ import { catalogStepOf, deletionStepOf, phraseStartOf } from './editSteps';
 import type { CommandReply } from '../types/command-reply';
 import type { EditStep, StepSummary } from '../types/edit-step';
 import { bookOfRef } from '../utils/analysis-book';
-import { countTextOfEveryTag } from '../utils/text-counts';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { readEditOutcome, type AnalysisEditOutcome } from '../utils/edit-outcome';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
@@ -917,8 +916,10 @@ export function sessionEditHandlers({
     sessionId,
   }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
     try {
-      const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
-      return JSON.stringify(countTextOfEveryTag(draft.analysis));
+      const counts = await sessions.run(sessionId, (session) =>
+        session.repository.countTextByTag(),
+      );
+      return JSON.stringify(counts);
     } catch (e) {
       logger.error(`Interlinearizer: failed to count language text in session ${sessionId}`, e);
       throw e;

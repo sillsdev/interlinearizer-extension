@@ -59,6 +59,7 @@ import useRowSelection from '../hooks/useRowSelection';
 import useRowWindow from '../hooks/useRowWindow';
 import { whenSettled, type Settles } from '../utils/settles';
 import {
+  useCatalogPositions,
   useCatalogReads,
   useCatalogRowsByIds,
   useCatalogView,
@@ -326,11 +327,8 @@ export default function AnalysisCatalogPanel({
     if (hasRows) perfMeasure('catalog-rows', 'catalog-start');
   }, [hasRows]);
   if (view && view.facets !== facets) setFacets(view.facets);
-  const keptIds = useMemo(() => view?.keptIds ?? [], [view]);
+  const keptCount = view?.keptCount ?? 0;
   const rowCount = view?.rowCount ?? 0;
-
-  /** The ids of the rows the listing keeps, in the shape the selection and the window take. */
-  const rows = useMemo(() => keptIds.map((analysisId) => ({ analysisId })), [keptIds]);
 
   /** Whether every book of the text has been read, none failing. */
   const isTextRead =
@@ -424,19 +422,24 @@ export default function AnalysisCatalogPanel({
    * Where the row to reveal sits in the listing, or `undefined` when there is none or the listing
    * does not hold it; that row can sit anywhere, so it is not otherwise within the mounted window.
    */
-  const revealedRowIndex = useMemo(() => {
-    if (!rowToReveal) return undefined;
-    const index = keptIds.indexOf(rowToReveal.analysisId);
-    /* v8 ignore next -- the window ignores -1 just as it does undefined */
-    return index === -1 ? undefined : index;
-  }, [keptIds, rowToReveal]);
+  const revealPositions = useCatalogPositions(request, rowToReveal && [rowToReveal.analysisId]);
+  const revealedRowIndex = rowToReveal && revealPositions?.positions?.get(rowToReveal.analysisId);
 
   // Capped at FETCH_AHEAD_COUNT past the rows that have arrived, but long enough to reach a revealed
   // row. Without the cap, a sentinel that stays in reach keeps growing the window while rows are
   // fetched. Each step then asks the host for more rows.
   const windowedRows = useMemo(
-    () => rows.slice(0, Math.max(sentRows.size + FETCH_AHEAD_COUNT, (revealedRowIndex ?? -1) + 1)),
-    [rows, sentRows, revealedRowIndex],
+    () =>
+      Array.from(
+        {
+          length: Math.min(
+            keptCount,
+            Math.max(sentRows.size + FETCH_AHEAD_COUNT, (revealedRowIndex ?? -1) + 1),
+          ),
+        },
+        (_unused, index) => index,
+      ),
+    [keptCount, sentRows, revealedRowIndex],
   );
 
   /**
@@ -505,13 +508,15 @@ export default function AnalysisCatalogPanel({
   const confirmMorphemes = useConfirmMorphemesDispatch();
   const readOnly = useAnalysisReadOnly();
 
-  const { checkedIds, setChecked, setAllChecked } = useRowSelection(rows);
-
-  /** The checked rows' ids in listing order, which picks a merge's survivor when uses tie. */
-  const orderedCheckedIds = useMemo(
-    () => keptIds.filter((analysisId) => checkedIds.has(analysisId)),
-    [keptIds, checkedIds],
-  );
+  // Listing order picks a merge's survivor when uses tie.
+  const {
+    checkedIds,
+    orderedCheckedIds,
+    isSettled,
+    retry: retrySelection,
+    setChecked,
+    setAllChecked,
+  } = useRowSelection(request);
 
   /** What a bulk action over the checked rows reaches. */
   const selection = useSelectionSummary(orderedCheckedIds);
@@ -1210,15 +1215,17 @@ export default function AnalysisCatalogPanel({
           />
         )}
 
-        {!readOnly && rows.length > 0 && (
+        {!readOnly && keptCount > 0 && (
           <CatalogSelectionBar
-            allChecked={checkedIds.size === rows.length}
+            actionsDisabled={!isSettled}
+            allChecked={checkedIds.size === keptCount}
             count={checkedIds.size}
             localizedStrings={localizedStrings}
             onCheckAll={setAllChecked}
             onClearGloss={handleClearGlossChecked}
             onMerge={mergeChecked}
             onDelete={handleDeleteChecked}
+            onRetry={retrySelection}
             usageCount={checkedUsageCount}
           />
         )}
@@ -1261,7 +1268,7 @@ export default function AnalysisCatalogPanel({
 
         {view &&
           !isAwaitingText &&
-          (rows.length === 0 ? (
+          (keptCount === 0 ? (
             // Two ways to have nothing to list, and they call for different answers: a draft that has
             // recorded nothing yet, and a query that kept none of what it did. Telling a reader the
             // draft is empty when they have merely mistyped would send them looking for lost work.
@@ -1277,7 +1284,7 @@ export default function AnalysisCatalogPanel({
           ) : (
             <CatalogList scrollRef={scrollRef} sentinelRef={sentinelRef}>
               {windowRows
-                .flatMap(({ analysisId }) => sentRows.get(analysisId) ?? [])
+                .flatMap((index) => view?.rows[index] ?? [])
                 .map((row) => (
                   <CatalogRowView
                     key={row.analysisId}

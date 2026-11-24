@@ -1,0 +1,31 @@
+{
+  "kind": "queries",
+  "commit": "f6144852509d4d33281d1fae4393182ef413544b",
+  "dirty": true,
+  "coreCommit": "33250c6784cf27ea9bd6e0f0a8a729c7644f9f67",
+  "recordedAt": "2026-11-24T20:25:37.494Z",
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i5-8350U CPU @ 1.70GHz",
+    "cores": 8,
+    "memoryGb": 42,
+    "os": "Linux 7.3.5-2-cachyos",
+    "node": "v24.22.2",
+    "loadAverage": [5.91, 5.84, 4.58]
+  },
+  "runs": 20,
+  "tiers": {
+    "large-loadable": {
+      "viewBook": "PSA",
+      "timings": {
+        "catalog first page": {
+          "runs": 20,
+          "medianMs": 20.747,
+          "p90Ms": 28.425,
+          "minMs": 15.63,
+          "maxMs": 31.706
+        }
+      },
+      "bytes": { "catalog first page": 67109 }
+    }
+  }
+}

@@ -4,11 +4,17 @@ import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlin
 import { Collator } from 'platform-bible-utils';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
+import type { TokenAnalysisSummary } from '../../types/analysis-repository';
+import { AnalysisIndex } from '../../services/analysisIndex';
 import {
   applyCatalogQuery,
+  buildCatalogEntries,
   buildCatalogRows,
+  catalogKeyOrder,
   deriveFacets,
+  narrowCatalog,
   placeHeadings,
+  placeUsages,
   reconcileFilters,
   type CatalogFilters,
   type CatalogQuery,
@@ -385,6 +391,159 @@ describe('buildCatalogRows', () => {
   });
 });
 
+describe('buildCatalogRows place totals', () => {
+  /** One analysis used in GEN and EXO, and stale in EXO. */
+  const spread: TextAnalysis = {
+    ...emptyAnalysis(),
+    tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'word' }],
+    tokenAnalysisLinks: [
+      link('ta-1', 'EXO 1:1:0'),
+      link('ta-1', 'GEN 1:2:0'),
+      link('ta-1', 'EXO 2:1:0', 'stale'),
+      link('ta-1', 'EXO 2:2:0', 'stale'),
+    ],
+  };
+
+  it('carries the first usage in document order', () => {
+    expect(buildCatalogRows(spread, scope)[0].firstUsage?.tokenRef).toBe('GEN 1:2:0');
+  });
+
+  it('carries no first usage for an unused analysis', () => {
+    const unused = { ...spread, tokenAnalysisLinks: [] };
+
+    expect(buildCatalogRows(unused, scope)[0]).not.toHaveProperty('firstUsage');
+  });
+
+  it('counts the stale places and lists the books they are in', () => {
+    const [row] = buildCatalogRows(spread, scope);
+
+    expect(row.staleCount).toBe(2);
+    expect(row.staleBooks).toEqual(['EXO']);
+  });
+});
+
+describe('buildCatalogEntries', () => {
+  /** A summary of an analysis of `surfaceText`, glossed in English and French, used nowhere. */
+  function summary(overrides: Partial<TokenAnalysisSummary> = {}): TokenAnalysisSummary {
+    return {
+      analysis: {
+        ...FIXTURE_STAMPS,
+        id: 'ta-1',
+        surfaceText: 'Word',
+        gloss: { en: 'word', fr: 'mot' },
+      },
+      approvalsByBook: {},
+      staleByBook: {},
+      firstApprovals: [],
+      firstStale: [],
+      ...overrides,
+    };
+  }
+
+  it('derives each entry as the row of the same analysis, but for its place lists', () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'Word', gloss: { en: 'word' }, pos: 'noun' },
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'other' },
+      ],
+      tokenAnalysisLinks: [
+        link('ta-1', 'GEN 1:2:0'),
+        link('ta-1', 'EXO 1:1:0'),
+        link('ta-1', 'GEN 1:1/s1:0'),
+        link('ta-1', 'EXO 2:1:0', 'stale'),
+      ],
+    };
+    const placed: CatalogScope = {
+      ...scope,
+      headingPlacements: new Map([['GEN 1:1/s1', { charIndex: 0, order: 0 }]]),
+    };
+
+    const entries = buildCatalogEntries(
+      new AnalysisIndex(analysis).summarizeTokenAnalyses(),
+      placed,
+    );
+
+    expect(entries).toEqual(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave them out
+      buildCatalogRows(analysis, placed).map(({ usages, staleLocations, ...row }) => row),
+    );
+  });
+
+  it('places the first usage among the headings the scope places', () => {
+    const headingLast = summary({
+      approvalsByBook: { GEN: 2 },
+      firstApprovals: ['GEN 1:1:5', 'GEN 1:1/s1:0'],
+    });
+    const placed: CatalogScope = {
+      ...scope,
+      headingPlacements: new Map([['GEN 1:1/s1', { charIndex: 0, order: 0 }]]),
+    };
+
+    expect(buildCatalogEntries([headingLast], placed)[0].firstUsage?.tokenRef).toBe('GEN 1:1/s1:0');
+  });
+
+  it('takes the first usage from the first verse alone', () => {
+    const twoVerses = summary({
+      approvalsByBook: { GEN: 2 },
+      firstApprovals: ['GEN 1:1:5', 'GEN 1:2:0'],
+    });
+
+    expect(buildCatalogEntries([twoVerses], scope)[0].firstUsage?.tokenRef).toBe('GEN 1:1:5');
+  });
+
+  it('keeps the entry of a summary it derived for the same language and book', () => {
+    const used = summary({ approvalsByBook: { GEN: 1 }, firstApprovals: ['GEN 1:1:0'] });
+    const [before] = buildCatalogEntries([used], scope);
+
+    expect(buildCatalogEntries([used], { ...scope })[0]).toBe(before);
+  });
+
+  it('derives the entry again for another book', () => {
+    const used = summary({ approvalsByBook: { GEN: 1 }, firstApprovals: ['GEN 1:1:0'] });
+    buildCatalogEntries([used], scope);
+
+    expect(buildCatalogEntries([used], { ...scope, currentBook: 'EXO' })[0].usageCountInBook).toBe(
+      0,
+    );
+  });
+
+  it('derives the entry again for another analysis language', () => {
+    const used = summary();
+    buildCatalogEntries([used], scope);
+
+    expect(buildCatalogEntries([used], { ...scope, analysisLanguage: 'fr' })[0].gloss).toBe('mot');
+  });
+
+  it('derives the entry again when the scope may place a heading in its first verse anew', () => {
+    const headingLast = summary({
+      approvalsByBook: { GEN: 2 },
+      firstApprovals: ['GEN 1:1:5', 'GEN 1:1/s1:0'],
+    });
+    buildCatalogEntries([headingLast], scope);
+
+    const [entry] = buildCatalogEntries([headingLast], {
+      ...scope,
+      headingPlacements: new Map([['GEN 1:1/s1', { charIndex: 0, order: 0 }]]),
+    });
+
+    expect(entry.firstUsage?.tokenRef).toBe('GEN 1:1/s1:0');
+  });
+});
+
+describe('placeUsages', () => {
+  it('lists the places in document order, headings placed as the scope places them', () => {
+    const placed: CatalogScope = {
+      ...scope,
+      headingPlacements: new Map([['GEN 1:1/s1', { charIndex: 0, order: 0 }]]),
+    };
+
+    expect(
+      placeUsages(['GEN 1:2:0', 'GEN 1:1:5', 'GEN 1:1/s1:0'], placed).map((u) => u.tokenRef),
+    ).toEqual(['GEN 1:1/s1:0', 'GEN 1:1:5', 'GEN 1:2:0']);
+  });
+});
+
 describe('placeHeadings', () => {
   it("maps each heading to its offset in its verse and its segment's position in the book", () => {
     const book = makeVerseBook([
@@ -747,6 +906,22 @@ describe('applyCatalogQuery sort', () => {
   });
 });
 
+describe('applyCatalogQuery ties', () => {
+  it('orders rows alike in every sorted field by id', () => {
+    const alike: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'α' },
+        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'α' },
+      ],
+    };
+
+    expect(
+      applyCatalogQuery(buildCatalogRows(alike, scope), makeQuery()).map((r) => r.analysisId),
+    ).toEqual(['ta-1', 'ta-2']);
+  });
+});
+
 /** Analyses with and without a morpheme breakdown. */
 const mixedBreakdowns: TextAnalysis = {
   ...emptyAnalysis(),
@@ -784,6 +959,39 @@ const tagged: TextAnalysis = {
     { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'c' },
   ],
 };
+
+describe('catalogKeyOrder', () => {
+  it('orders rows by the sort key alone, tying rows it cannot separate', () => {
+    const rows = buildCatalogRows(
+      {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'α' },
+          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'β' },
+          { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'γ' },
+        ],
+        tokenAnalysisLinks: [link('ta-3', 'GEN 1:1:0')],
+      },
+      scope,
+    );
+    const byKey = catalogKeyOrder(makeQuery({ sort: 'usageCount' }));
+
+    expect(byKey(rows[0], rows[1])).toBe(0);
+    expect(byKey(rows[2], rows[0])).toBeLessThan(0);
+  });
+});
+
+describe('narrowCatalog', () => {
+  it('keeps the rows the query keeps in the order given, sorting none', () => {
+    const rows = buildCatalogRows(tagged, scope).toReversed();
+
+    expect(
+      narrowCatalog(rows, makeQuery({ filters: { pos: ['noun', 'verb'] } })).map(
+        (r) => r.analysisId,
+      ),
+    ).toEqual(['ta-2', 'ta-1']);
+  });
+});
 
 describe('applyCatalogQuery filters', () => {
   it('keeps only rows used in one of the selected books', () => {

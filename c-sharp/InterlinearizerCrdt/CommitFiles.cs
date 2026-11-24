@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace Interlinearizer.Crdt;
 
 /// <summary>
@@ -40,9 +42,14 @@ public class DirectoryCommitFiles(string root) : ICommitFiles
     {
         var path = PathOf(name);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        // Written aside and then renamed, so that no partial file ever has the name.
+        // Written aside, flushed to disk and then renamed, so that no partial file ever has the name,
+        // even after a power loss.
         var written = $"{path}.tmp";
-        await File.WriteAllTextAsync(written, content);
+        await using (var stream = new FileStream(written, FileMode.Create, FileAccess.Write, FileShare.None, 4096, useAsync: true))
+        {
+            await stream.WriteAsync(Encoding.UTF8.GetBytes(content));
+            stream.Flush(flushToDisk: true);
+        }
         File.Move(written, path, overwrite: true);
     }
 

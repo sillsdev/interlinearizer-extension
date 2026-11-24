@@ -40,6 +40,11 @@ public partial class CommitFileSync(
 
     private const string Folder = "commits";
 
+    // Parts aim one character under the limit, so a limit under two leaves them no room.
+    private readonly int maxFileChars = maxFileChars >= 2
+        ? maxFileChars
+        : throw new ArgumentOutOfRangeException(nameof(maxFileChars), maxFileChars, "A file must hold at least two characters");
+
     /// <summary>
     /// Writes this client's commits that no chunk holds yet, as new chunks. Before that, it writes
     /// any parts that an earlier export left out of a chunk.

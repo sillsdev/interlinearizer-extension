@@ -45,33 +45,31 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// </exception>
     public async Task<AppliedChangeSet> Apply(ChangeSet changes)
     {
-        var kinds = new IKindChanges[]
-        {
-            new KindChanges<SegmentAnalysis>("segment analysis", changes.SegmentAnalyses,
-                a => new CreateSegmentAnalysisChange(a, projectId),
-                PatchSegmentAnalysisChange.Diff,
-                id => new DeleteChange<SegmentAnalysis>(id)),
-            new KindChanges<TokenAnalysis>("token analysis", changes.TokenAnalyses,
-                a => new CreateTokenAnalysisChange(a, projectId),
-                PatchTokenAnalysisChange.Diff,
-                id => new DeleteChange<TokenAnalysis>(id)),
-            new KindChanges<PhraseAnalysis>("phrase analysis", changes.PhraseAnalyses,
-                a => new CreatePhraseAnalysisChange(a, projectId),
-                PatchPhraseAnalysisChange.Diff,
-                id => new DeleteChange<PhraseAnalysis>(id)),
-            new KindChanges<SegmentAnalysisLink>("segment analysis link", changes.SegmentAnalysisLinks,
-                l => new CreateSegmentAnalysisLinkChange(l, projectId),
-                PatchSegmentAnalysisLinkChange.Diff,
-                id => new DeleteChange<SegmentAnalysisLink>(id)),
-            new KindChanges<TokenAnalysisLink>("token analysis link", changes.TokenAnalysisLinks,
-                l => new CreateTokenAnalysisLinkChange(l, projectId),
-                PatchTokenAnalysisLinkChange.Diff,
-                id => new DeleteChange<TokenAnalysisLink>(id)),
-            new KindChanges<PhraseAnalysisLink>("phrase analysis link", changes.PhraseAnalysisLinks,
-                l => new CreatePhraseAnalysisLinkChange(l, projectId),
-                PatchPhraseAnalysisLinkChange.Diff,
-                id => new DeleteChange<PhraseAnalysisLink>(id)),
-        };
+        var segmentAnalyses = new KindChanges<SegmentAnalysis>("segment analysis", changes.SegmentAnalyses,
+            a => new CreateSegmentAnalysisChange(a, projectId),
+            PatchSegmentAnalysisChange.Diff,
+            id => new DeleteChange<SegmentAnalysis>(id));
+        var tokenAnalyses = new KindChanges<TokenAnalysis>("token analysis", changes.TokenAnalyses,
+            a => new CreateTokenAnalysisChange(a, projectId),
+            PatchTokenAnalysisChange.Diff,
+            id => new DeleteChange<TokenAnalysis>(id));
+        var phraseAnalyses = new KindChanges<PhraseAnalysis>("phrase analysis", changes.PhraseAnalyses,
+            a => new CreatePhraseAnalysisChange(a, projectId),
+            PatchPhraseAnalysisChange.Diff,
+            id => new DeleteChange<PhraseAnalysis>(id));
+        var segmentLinks = new KindChanges<SegmentAnalysisLink>("segment analysis link", changes.SegmentAnalysisLinks,
+            l => new CreateSegmentAnalysisLinkChange(l, projectId),
+            PatchSegmentAnalysisLinkChange.Diff,
+            id => new DeleteChange<SegmentAnalysisLink>(id));
+        var tokenLinks = new KindChanges<TokenAnalysisLink>("token analysis link", changes.TokenAnalysisLinks,
+            l => new CreateTokenAnalysisLinkChange(l, projectId),
+            PatchTokenAnalysisLinkChange.Diff,
+            id => new DeleteChange<TokenAnalysisLink>(id));
+        var phraseLinks = new KindChanges<PhraseAnalysisLink>("phrase analysis link", changes.PhraseAnalysisLinks,
+            l => new CreatePhraseAnalysisLinkChange(l, projectId),
+            PatchPhraseAnalysisLinkChange.Diff,
+            id => new DeleteChange<PhraseAnalysisLink>(id));
+        var kinds = new IKindChanges[] { segmentAnalyses, tokenAnalyses, phraseAnalyses, segmentLinks, tokenLinks, phraseLinks };
         AssertIdsDistinct(kinds);
 
         var writtenIds = kinds.SelectMany(k => k.CreateIds.Concat(k.UpdateIds)).ToList();
@@ -83,41 +81,24 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         foreach (var kind in kinds) kind.AddChanges(harmonyChanges, projectId, storedKinds);
         if (harmonyChanges.Count == 0) return new AppliedChangeSet { Intent = changes.Intent };
 
-        var commit = await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
-        return await ChangedBy(commit, changes.Intent);
-    }
+        // Read before the commit deletes these links with their analyses.
+        var named = kinds.SelectMany(k => k.Ids).ToHashSet();
+        var taken = await FindLinksToAnalyses(kinds.SelectMany(k => k.AppliedDeleteIds).ToList());
+        IEnumerable<Guid> TakenIds(IEnumerable<AnalysisLink> links) => links.Select(l => l.Id).Where(id => !named.Contains(id));
 
-    /// <summary>
-    /// The records that <paramref name="commit"/> wrote snapshots of, as a change set. A record
-    /// deleted before the commit, whose snapshot a cascade rewrote, is left out.
-    /// </summary>
-    private async Task<AppliedChangeSet> ChangedBy(Commit commit, string intent)
-    {
-        var records = (await db.Snapshots.Where(s => s.CommitId == commit.Id).ToListAsync())
-            .Select(s => s.Entity.DbObject)
-            .OfType<AnalysisRecord>()
-            .Where(r => r.DeletedAt is null || r.DeletedAt == commit.DateTime)
-            .ToList();
+        await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
+        // Read afresh, not from the commit's snapshots. Harmony keeps no snapshot under a commit
+        // dated before others, and the stored records hold the changes of later commits.
         return new AppliedChangeSet
         {
-            Intent = intent,
-            SegmentAnalyses = Changed<SegmentAnalysis>(records),
-            SegmentAnalysisLinks = Changed<SegmentAnalysisLink>(records),
-            TokenAnalyses = Changed<TokenAnalysis>(records),
-            TokenAnalysisLinks = Changed<TokenAnalysisLink>(records),
-            PhraseAnalyses = Changed<PhraseAnalysis>(records),
-            PhraseAnalysisLinks = Changed<PhraseAnalysisLink>(records),
+            Intent = changes.Intent,
+            SegmentAnalyses = await segmentAnalyses.Applied(this, []),
+            SegmentAnalysisLinks = await segmentLinks.Applied(this, TakenIds(taken.SegmentAnalysisLinks)),
+            TokenAnalyses = await tokenAnalyses.Applied(this, []),
+            TokenAnalysisLinks = await tokenLinks.Applied(this, TakenIds(taken.TokenAnalysisLinks)),
+            PhraseAnalyses = await phraseAnalyses.Applied(this, []),
+            PhraseAnalysisLinks = await phraseLinks.Applied(this, TakenIds(taken.PhraseAnalysisLinks)),
         };
-    }
-
-    /// <summary>The changes of one kind among <paramref name="records"/>, or null when there are none.</summary>
-    private static AppliedRecords<T>? Changed<T>(List<AnalysisRecord> records) where T : AnalysisRecord
-    {
-        var ofKind = records.OfType<T>().ToList();
-        if (ofKind.Count == 0) return null;
-        return new AppliedRecords<T>(
-            ofKind.Where(r => r.DeletedAt is null).ToList(),
-            ofKind.Where(r => r.DeletedAt is not null).Select(r => r.Id).ToList());
     }
 
     /// <summary>Every stored record.</summary>
@@ -409,6 +390,9 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
 
         IEnumerable<Guid> DeleteIds { get; }
 
+        /// <summary>The ids of the stored records that the changes delete. Empty until <see cref="AddChanges"/> has run.</summary>
+        IEnumerable<Guid> AppliedDeleteIds { get; }
+
         /// <summary>
         /// The links of this kind that the changes create, and the stored ones that an update moves
         /// to another analysis, as the update leaves them. An update that keeps its analysis writes
@@ -450,6 +434,8 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         Func<Guid, IChange> delete) : IKindChanges where T : AnalysisRecord, IObjectBase
     {
         private Dictionary<Guid, T> _stored = [];
+        private readonly List<Guid> _putIds = [];
+        private readonly List<Guid> _deleteIds = [];
 
         public string Name => name;
 
@@ -460,6 +446,8 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         public IEnumerable<Guid> DeleteIds => changes?.Deletes.Select(r => r.Id) ?? [];
 
         public IEnumerable<Guid> Ids => CreateIds.Concat(UpdateIds).Concat(DeleteIds);
+
+        public IEnumerable<Guid> AppliedDeleteIds => _deleteIds;
 
         public IEnumerable<AnalysisLink> WrittenLinks =>
             changes?.Creates.OfType<AnalysisLink>().Concat(changes.Updates
@@ -498,6 +486,7 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
                         : $"The {name} {record.Id} is stored as a {storedAs}", nameof(changes));
                 }
                 into.Add(create(record));
+                _putIds.Add(record.Id);
             }
             foreach (var (before, after) in changes.Updates)
             {
@@ -515,11 +504,25 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
                 {
                     throw new ArgumentException($"The {name} {after.Id} is stored in project {current.ProjectId}", nameof(changes));
                 }
-                if (diff(before, after) is { } patch) into.Add(patch);
+                if (diff(before, after) is not { } patch) continue;
+                into.Add(patch);
+                _putIds.Add(after.Id);
             }
-            into.AddRange(DeleteIds
-                .Where(id => _stored.TryGetValue(id, out var stored) && stored.ProjectId == projectId)
-                .Select(delete));
+            _deleteIds.AddRange(DeleteIds.Where(id => _stored.TryGetValue(id, out var stored) && stored.ProjectId == projectId));
+            into.AddRange(_deleteIds.Select(delete));
+        }
+
+        /// <summary>
+        /// What the commit of <see cref="AddChanges"/>'s changes left of this kind, or null when
+        /// it changed none. The ids in <paramref name="taken"/> are reported deleted too. Each put
+        /// is read as stored.
+        /// </summary>
+        public async Task<AppliedRecords<T>?> Applied(AnalysisRepository repository, IEnumerable<Guid> taken)
+        {
+            var deletes = _deleteIds.Concat(taken).ToList();
+            if (_putIds.Count == 0 && deletes.Count == 0) return null;
+            var puts = _putIds.Count == 0 ? [] : await repository.StoredInAnyProject<T>(_putIds);
+            return new AppliedRecords<T>(puts, deletes);
         }
 
         private void AssertInProject(T record, Guid projectId)

@@ -234,6 +234,29 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyReportsAPutAsStoredThoughItsCommitLandsBeforeALaterOne()
+    {
+        await ApplyNext(FullAnalysis());
+        var read = Token(TaBeginning, "beginning", "start");
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "gloss",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, Token(TaBeginning, "beginning", "origin"))),
+        });
+
+        var reply = await ApplyAt(earlier, new ChangeSet
+        {
+            Intent = "tag",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(read, Tagged(read, "N"))),
+        });
+
+        var put = reply.TokenAnalyses!.Puts.Single();
+        await Assert.That(put.Pos).IsEqualTo("N");
+        await Assert.That(put.Gloss!["en"]).IsEqualTo("origin");
+    }
+
+    [Test]
     public async Task ApplyStoresACreatedEmptyMapAsAbsent()
     {
         var (tokenId, phraseId, segmentId) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());

@@ -574,6 +574,25 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyReportsALinkThatADeletedAnalysisTookWhenAReplayChecksMoreLinksThanSqliteTakesParameters()
+    {
+        const int moreThanSqliteParameters = 32_767;
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "seedMany",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(
+                [.. Enumerable.Range(0, moreThanSqliteParameters).Select(i => TokenLink(Guid.NewGuid(), TaAnd, $"GEN 2:{i}:0", "and"))]),
+        });
+        var earlier = NextDate();
+        await ApplyNext(new ChangeSet { Intent = "deleteLink", TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Delete(TlExoAnd) });
+
+        var reply = await ApplyAt(earlier, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaBeginning) });
+
+        await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenBeginning]);
+    }
+
+    [Test]
     public async Task ApplyReportsEachPutAsStored()
     {
         var reply = await ApplyNext(FullAnalysis());

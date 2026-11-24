@@ -2,6 +2,7 @@ using Interlinearizer.Crdt.Changes;
 using Interlinearizer.Crdt.Entities;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using SIL.Harmony;
 using SIL.Harmony.Changes;
@@ -43,6 +44,8 @@ public static class InterlinearizerCrdtKernel
             // whichever container built them first.
             builder.EnableServiceProviderCaching(false);
             configureDb(provider, builder);
+            // Sends each id list as one JSON parameter, because SQLite caps the parameters of a statement.
+            new SqliteDbContextOptionsBuilder(builder).UseParameterizedCollectionMode(ParameterTranslationMode.Parameter);
             builder.EnableDetailedErrors();
         });
         services.AddCrdtData<InterlinearizerCrdtDbContext>(ConfigureHarmony);

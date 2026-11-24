@@ -8,7 +8,7 @@ import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../src/services/
 import type { ChangeSet } from '../../src/types/analysis-repository';
 import { FakePapi } from '../../src/__tests__/c-sharp-host/fake-papi';
 import { summarize, type Timing } from '../bench/measure';
-import { readDraftJson } from '../dataset/store';
+import { readDraftJson, readManifest } from '../dataset/store';
 import { provenance, writeResults } from '../results';
 import { readCaptureMeta } from '../usj-cache';
 
@@ -118,6 +118,7 @@ async function main(): Promise<void> {
   const requested = process.argv.slice(2);
   const names = requested.length > 0 ? requested : ['small', 'medium'];
   const meta = readCaptureMeta();
+  names.forEach((name) => readManifest(name, meta));
   const dataDirectory = mkdtempSync(path.join(os.tmpdir(), 'i13r-perf-host-'));
   const papi = await FakePapi.start(dataDirectory);
   const tiers: Record<string, unknown> = {};

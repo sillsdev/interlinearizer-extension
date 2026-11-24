@@ -485,6 +485,25 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyReportsALinkThatADeletedAnalysisTookBeforeALaterCommitMovedItOff()
+    {
+        await ApplyNext(FullAnalysis());
+        var earlier = NextDate();
+        var read = TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested);
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(TlGenBeginning, TaUnlinked, "GEN 1:1:9", "beginning", AssignmentStatus.Suggested))),
+        });
+
+        var reply = await ApplyAt(earlier, new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaBeginning) });
+
+        await Assert.That(await Repository.FindLinksToAnalyses([TaUnlinked]).ContinueWith(t => t.Result.TokenAnalysisLinks)).IsEmpty();
+        await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenBeginning]);
+    }
+
+    [Test]
     public async Task ApplyReportsEachPutAsStored()
     {
         var reply = await ApplyNext(FullAnalysis());

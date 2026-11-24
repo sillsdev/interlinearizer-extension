@@ -81,23 +81,22 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         foreach (var kind in kinds) kind.AddChanges(harmonyChanges, projectId, storedKinds);
         if (harmonyChanges.Count == 0) return new AppliedChangeSet { Intent = changes.Intent };
 
-        // Read before the commit deletes these links with their analyses.
         var named = kinds.SelectMany(k => k.Ids).ToHashSet();
-        var taken = await FindLinksToAnalyses(kinds.SelectMany(k => k.AppliedDeleteIds).ToList());
-        IEnumerable<Guid> TakenIds(IEnumerable<AnalysisLink> links) => links.Select(l => l.Id).Where(id => !named.Contains(id));
+        var mayTake = await LinksEverOn(kinds.SelectMany(k => k.AppliedDeleteIds).ToList(), named);
 
         await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
+        var taken = await TakenFrom(mayTake);
         // Read afresh, not from the commit's snapshots. Harmony keeps no snapshot under a commit
         // dated before others, and the stored records hold the changes of later commits.
         return new AppliedChangeSet
         {
             Intent = changes.Intent,
             SegmentAnalyses = await segmentAnalyses.Applied(this, []),
-            SegmentAnalysisLinks = await segmentLinks.Applied(this, TakenIds(taken.SegmentAnalysisLinks)),
+            SegmentAnalysisLinks = await segmentLinks.Applied(this, IdsOf(taken.SegmentAnalysisLinks)),
             TokenAnalyses = await tokenAnalyses.Applied(this, []),
-            TokenAnalysisLinks = await tokenLinks.Applied(this, TakenIds(taken.TokenAnalysisLinks)),
+            TokenAnalysisLinks = await tokenLinks.Applied(this, IdsOf(taken.TokenAnalysisLinks)),
             PhraseAnalyses = await phraseAnalyses.Applied(this, []),
-            PhraseAnalysisLinks = await phraseLinks.Applied(this, TakenIds(taken.PhraseAnalysisLinks)),
+            PhraseAnalysisLinks = await phraseLinks.Applied(this, IdsOf(taken.PhraseAnalysisLinks)),
         };
     }
 
@@ -293,6 +292,43 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// <summary>The stored records of one kind under <paramref name="ids"/>, whichever project holds them.</summary>
     private Task<List<T>> StoredInAnyProject<T>(IReadOnlyCollection<Guid> ids) where T : AnalysisRecord, IObjectBase =>
         dataModel.QueryLatest<T>(q => q.Where(e => ids.Contains(e.Id))).ToListAsync().AsTask();
+
+    /// <summary>
+    /// The stored links, other than those in <paramref name="named"/>, that have ever pointed at
+    /// one of <paramref name="analysisIds"/>. A commit dated before others deletes the links that
+    /// were on an analysis at its date. A later commit may have moved such a link off since.
+    /// </summary>
+    private async Task<AnalysisLinks> LinksEverOn(List<Guid> analysisIds, HashSet<Guid> named)
+    {
+        if (analysisIds.Count == 0) return new AnalysisLinks([], [], []);
+        var everOn = await db.Snapshots
+            .Where(s => s.References.Any(r => analysisIds.Contains(r)))
+            .Select(s => s.EntityId)
+            .Distinct()
+            .ToListAsync();
+        everOn.RemoveAll(named.Contains);
+        return new AnalysisLinks(
+            await ByIds<TokenAnalysisLink>(everOn),
+            await ByIds<PhraseAnalysisLink>(everOn),
+            await ByIds<SegmentAnalysisLink>(everOn));
+    }
+
+    /// <summary>The links of <paramref name="links"/> that are no longer stored.</summary>
+    private async Task<AnalysisLinks> TakenFrom(AnalysisLinks links)
+    {
+        async Task<List<T>> Taken<T>(List<T> before) where T : AnalysisLink, IObjectBase
+        {
+            if (before.Count == 0) return before;
+            var still = IdsOf(await ByIds<T>(before.Select(l => l.Id).ToList())).ToHashSet();
+            return before.Where(l => !still.Contains(l.Id)).ToList();
+        }
+        return new AnalysisLinks(
+            await Taken(links.TokenAnalysisLinks),
+            await Taken(links.PhraseAnalysisLinks),
+            await Taken(links.SegmentAnalysisLinks));
+    }
+
+    private static IEnumerable<Guid> IdsOf(IEnumerable<AnalysisLink> links) => links.Select(l => l.Id);
 
     /// <summary>
     /// Refuses a create under an id that an interlinear project holds, or that a deleted record of

@@ -582,8 +582,21 @@ export class AnalysisIndex {
    */
   private summaryDifferencesFrom(rebuilt: AnalysisIndex): IndexDifference[] {
     if (!this.summaries) return [];
+    // Books are compared in sorted order, because a link retargeted by a merge is listed under its
+    // new analysis after that analysis's other links, whereas a rebuild lists it in stored order.
+    const sortedBooks = (counts: Readonly<Record<string, number>>) =>
+      Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
     const byId = (summaries: readonly TokenAnalysisSummary[]) =>
-      new Map(summaries.map((summary) => [summary.analysis.id, JSON.stringify(summary)]));
+      new Map(
+        summaries.map((summary) => [
+          summary.analysis.id,
+          JSON.stringify({
+            ...summary,
+            approvalsByBook: sortedBooks(summary.approvalsByBook),
+            staleByBook: sortedBooks(summary.staleByBook),
+          }),
+        ]),
+      );
     const kept = byId(this.summarizeTokenAnalyses());
     const fresh = byId(rebuilt.summarizeTokenAnalyses());
     return [...new Set([...kept.keys(), ...fresh.keys()])].flatMap((id): IndexDifference[] =>

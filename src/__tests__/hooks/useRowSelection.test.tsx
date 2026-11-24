@@ -1,14 +1,14 @@
 /// <reference types="jest" />
 
-import { logger } from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import type { TextAnalysis } from 'interlinearizer';
 import { act, renderHook } from '@testing-library/react';
 import { useMemo } from 'react';
 import useRowSelection from '../../hooks/useRowSelection';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { settle } from '../components/analysis-provider';
-import { readText } from '../cache/fake-host';
-import { failing, wrapperOver } from '../cache/hook-sessions';
+import { readText, relayChange } from '../cache/fake-host';
+import { changeNaming, failing, sessionIdOf, timesSent, wrapperOver } from '../cache/hook-sessions';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 /** Three unused analyses, of the words "a", "b" and "c", which a surface sort lists in that order. */
@@ -128,6 +128,57 @@ describe('useRowSelection', () => {
       'Interlinearizer: could not list the catalog rows to check',
       expect.any(Error),
     );
+  });
+
+  it('places the rows it checks at once without asking the host again', async () => {
+    const { result } = await renderSelection();
+
+    act(() => result.current.setAllChecked(true));
+    await settle();
+
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(1);
+    expect(result.current.orderedCheckedIds).toEqual(['ta-a', 'ta-b', 'ta-c']);
+  });
+
+  it('asks the host to place the rows it checked at once again after a change names the catalog', async () => {
+    const { result } = await renderSelection();
+    act(() => result.current.setAllChecked(true));
+    await settle();
+
+    act(() =>
+      relayChange(
+        changeNaming(sessionIdOf('interlinearizer.locateCatalogRows'), ['getCatalogRows']),
+      ),
+    );
+    await settle();
+
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(2);
+  });
+
+  it('is settled while nothing is checked', async () => {
+    const { result } = await renderSelection();
+
+    expect(result.current.isSettled).toBe(true);
+  });
+
+  it('is unsettled until the host confirms the listing keeps the checked rows', async () => {
+    const { result } = await renderSelection();
+    const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+      if (call[0] === 'interlinearizer.locateCatalogRows') await held;
+      return serve?.(...call);
+    });
+
+    act(() => result.current.setChecked('ta-b', true));
+
+    expect(result.current.isSettled).toBe(false);
+    release();
+    await settle();
+    expect(result.current.isSettled).toBe(true);
   });
 
   it('unchecks every row at once', async () => {

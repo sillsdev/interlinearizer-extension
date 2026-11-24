@@ -585,6 +585,28 @@ describe('AnalysisIndex', () => {
       });
     });
 
+    it('reports no summary difference after a link from an earlier book moves to another analysis', () => {
+      const before = analysis();
+      before.tokenAnalysisLinks[1] = { ...before.tokenAnalysisLinks[1], status: 'approved' };
+      const index = new AnalysisIndex(before);
+      index.summarizeTokenAnalyses();
+      const changes: ChangeSet = {
+        intent: 'merge',
+        tokenAnalysisLinks: {
+          puts: [{ ...before.tokenAnalysisLinks[0], analysisId: 'ta-And' }],
+          deletes: [],
+        },
+      };
+
+      index.apply(changes);
+
+      expect(
+        index.differencesFrom(
+          applyChangeSet({ ...emptyDraft('src'), analysis: before }, changes).draft.analysis,
+        ),
+      ).toStrictEqual([]);
+    });
+
     it('reports a kept summary of an analysis the analysis lacks', () => {
       const index = new AnalysisIndex(analysis());
       index.summarizeTokenAnalyses();

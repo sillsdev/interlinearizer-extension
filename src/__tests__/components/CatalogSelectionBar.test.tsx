@@ -83,6 +83,14 @@ describe('CatalogSelectionBar', () => {
     expect(onDelete).toHaveBeenCalled();
   });
 
+  it('disables every action while told to', () => {
+    renderBar({ count: 2, onMerge: jest.fn(), actionsDisabled: true });
+
+    expect(screen.getByTestId('catalog-selection-delete')).toBeDisabled();
+    expect(screen.getByTestId('catalog-selection-clear-gloss')).toBeDisabled();
+    expect(screen.getByTestId('catalog-selection-merge')).toBeDisabled();
+  });
+
   it('opens a merge of the checked rows when they can be merged', async () => {
     const onMerge = jest.fn();
     renderBar({ count: 2, onMerge });

@@ -31,6 +31,8 @@ type CatalogSelectionBarProps = Readonly<{
   onMerge?: () => void;
   /** Deletes every checked analysis. */
   onDelete: () => void;
+  /** Whether to show the actions disabled. */
+  actionsDisabled?: boolean;
 }>;
 
 /**
@@ -46,6 +48,7 @@ export default function CatalogSelectionBar({
   onClearGloss,
   onMerge,
   onDelete,
+  actionsDisabled = false,
 }: CatalogSelectionBarProps) {
   return (
     <div className="tw:flex tw:flex-wrap tw:items-center tw:gap-1.5 tw:px-3 tw:py-2 tw:border-b tw:border-border">
@@ -71,6 +74,7 @@ export default function CatalogSelectionBar({
             {onMerge && (
               <Button
                 data-testid="catalog-selection-merge"
+                disabled={actionsDisabled}
                 onClick={onMerge}
                 size="sm"
                 type="button"
@@ -82,6 +86,7 @@ export default function CatalogSelectionBar({
             {onClearGloss && (
               <Button
                 data-testid="catalog-selection-clear-gloss"
+                disabled={actionsDisabled}
                 onClick={onClearGloss}
                 size="sm"
                 type="button"
@@ -93,6 +98,7 @@ export default function CatalogSelectionBar({
             <Button
               className="tw:text-destructive"
               data-testid="catalog-selection-delete"
+              disabled={actionsDisabled}
               onClick={onDelete}
               size="sm"
               type="button"

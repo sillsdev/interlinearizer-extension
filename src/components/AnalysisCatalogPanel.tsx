@@ -509,7 +509,8 @@ export default function AnalysisCatalogPanel({
   const readOnly = useAnalysisReadOnly();
 
   // Listing order picks a merge's survivor when uses tie.
-  const { checkedIds, orderedCheckedIds, setChecked, setAllChecked } = useRowSelection(request);
+  const { checkedIds, orderedCheckedIds, isSettled, setChecked, setAllChecked } =
+    useRowSelection(request);
 
   /** What a bulk action over the checked rows reaches. */
   const selection = useSelectionSummary(orderedCheckedIds);
@@ -1210,6 +1211,7 @@ export default function AnalysisCatalogPanel({
 
         {!readOnly && keptCount > 0 && (
           <CatalogSelectionBar
+            actionsDisabled={!isSettled}
             allChecked={checkedIds.size === keptCount}
             count={checkedIds.size}
             localizedStrings={localizedStrings}

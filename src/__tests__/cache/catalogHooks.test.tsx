@@ -242,17 +242,19 @@ describe('useCatalogPositions', () => {
     expect(result.current?.retry).toEqual(expect.any(Function));
   });
 
-  it('offers no retry while a retry of the positions is under way', async () => {
+  it('fetches the positions again and offers no retry while that retry is under way', async () => {
     const wrapper = await wrapperOver();
     failing('interlinearizer.locateCatalogRows');
     const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
       wrapper,
     });
     await settle();
+    const before = timesSent('interlinearizer.locateCatalogRows');
     const release = holding('interlinearizer.locateCatalogRows');
 
     act(() => result.current?.retry?.());
 
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(before + 1);
     expect(result.current).toStrictEqual({
       positions: undefined,
       outdated: false,
@@ -260,6 +262,20 @@ describe('useCatalogPositions', () => {
     });
     release();
     await settle();
+  });
+
+  it('offers a retry again once a retry of the positions fails', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.locateCatalogRows');
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), {
+      wrapper,
+    });
+    await settle();
+
+    act(() => result.current?.retry?.());
+    await settle();
+
+    expect(result.current?.retry).toEqual(expect.any(Function));
   });
 });
 

@@ -157,7 +157,7 @@ describe('useCatalogView', () => {
     const { retry } = result.current;
     const failedAt = retries.length;
 
-    act(() => retry?.());
+    await act(async () => retry?.());
     await settle();
 
     expect(timesSent('interlinearizer.getCatalogRows')).toBe(2);
@@ -252,7 +252,7 @@ describe('useCatalogPositions', () => {
     const before = timesSent('interlinearizer.locateCatalogRows');
     const release = holding('interlinearizer.locateCatalogRows');
 
-    act(() => result.current?.retry?.());
+    await act(async () => result.current?.retry?.());
 
     expect(timesSent('interlinearizer.locateCatalogRows')).toBe(before + 1);
     expect(result.current).toStrictEqual({
@@ -271,10 +271,12 @@ describe('useCatalogPositions', () => {
       wrapper,
     });
     await settle();
+    const before = timesSent('interlinearizer.locateCatalogRows');
 
-    act(() => result.current?.retry?.());
+    await act(async () => result.current?.retry?.());
     await settle();
 
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(before + 1);
     expect(result.current?.retry).toEqual(expect.any(Function));
   });
 });
@@ -393,7 +395,7 @@ describe('useDeletionPreview', () => {
     jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => serve?.(...call));
 
     const { current } = result;
-    act(() => {
+    await act(async () => {
       if (current.status === 'failed') current.retry();
     });
 
@@ -406,12 +408,14 @@ describe('useDeletionPreview', () => {
     const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
     await waitFor(() => expect(result.current.status).toBe('failed'));
 
+    const release = holding('interlinearizer.previewDeletion');
     const { current } = result;
-    act(() => {
+    await act(async () => {
       if (current.status === 'failed') current.retry();
     });
 
     expect(result.current.status).toBe('loading');
+    release();
     await waitFor(() => expect(result.current.status).toBe('failed'));
   });
 
@@ -487,12 +491,14 @@ describe('useCatalogPlaces', () => {
     const { result } = renderHook(() => useCatalogPlaces('ta-beginning', 'GEN'), { wrapper });
     await waitFor(() => expect(result.current?.status).toBe('failed'));
 
+    const release = holding('interlinearizer.getCatalogPlaces');
     const { current } = result;
-    act(() => {
+    await act(async () => {
       if (current?.status === 'failed') current.retry();
     });
 
     expect(result.current?.status).toBe('loading');
+    release();
     await waitFor(() => expect(result.current?.status).toBe('failed'));
   });
 

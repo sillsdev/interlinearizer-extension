@@ -240,6 +240,7 @@ export async function fakeHost(
         text.retry?.();
         return undefined;
       case 'interlinearizer.getCatalogRows':
+      case 'interlinearizer.locateCatalogRows':
       case 'interlinearizer.getSelectionSummary':
       case 'interlinearizer.countUsages':
       case 'interlinearizer.getCatalogRowsByIds':

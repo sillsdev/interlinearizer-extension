@@ -2468,6 +2468,7 @@ describe('projectStorage', () => {
         (r: AnalysisRepository) => r.findApprovalsByForm(['word-gen']).then(Object.keys),
         1,
       ],
+      ['summarizeTokenAnalyses', (r: AnalysisRepository) => r.summarizeTokenAnalyses(), 1],
       ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
       [
         'getWholeDraft',

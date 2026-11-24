@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import { AnalysisIndex } from '../../services/analysisIndex';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../test-helpers';
 import {
@@ -10,6 +11,7 @@ import {
   getCatalogPlaces,
   getHomographRows,
   getRowsByIds,
+  locateCatalogRows,
   restoreUntagged,
   summarizeSelection,
   type CatalogPageRequest,
@@ -77,20 +79,30 @@ function fiveWords(): TextAnalysis {
 
 const formInText = () => true;
 
+/** The summaries a repository over `analysis` would give. */
+function summariesOf(analysis: TextAnalysis) {
+  return new AnalysisIndex(analysis).summarizeTokenAnalyses();
+}
+
+/** The page `request` asks for over `analysis`. */
+function pageOf(
+  analysis: TextAnalysis,
+  pageScope: CatalogScope,
+  request: CatalogPageRequest,
+  isFormInText: (form: string) => boolean | undefined,
+) {
+  return getCatalogPage(summariesOf(analysis), pageScope, request, isFormInText);
+}
+
 describe('getCatalogPage', () => {
   it('returns the rows from the offset onward, as many as the count asks for', () => {
-    const page = getCatalogPage(
-      fiveWords(),
-      scope,
-      makeRequest({ offset: 1, count: 2 }),
-      formInText,
-    );
+    const page = pageOf(fiveWords(), scope, makeRequest({ offset: 1, count: 2 }), formInText);
 
     expect(page.rows.map((r) => r.surfaceText)).toEqual(['b', 'c']);
   });
 
   it('keeps only rows whose form the text lacks under the not-in-text filter', () => {
-    const page = getCatalogPage(
+    const page = pageOf(
       fiveWords(),
       scope,
       makeRequest({ filters: { notInText: true } }),
@@ -100,15 +112,43 @@ describe('getCatalogPage', () => {
     expect(page.rows.map((r) => r.surfaceText)).toEqual(['b', 'd']);
   });
 
-  it('lists the id of every row the query keeps, in order, beyond the page', () => {
-    const page = getCatalogPage(
-      fiveWords(),
-      scope,
-      makeRequest({ offset: 1, count: 1 }),
-      formInText,
-    );
+  it('orders the rows the sort key ties on by their text, up to the page end', () => {
+    const tied: TextAnalysis = {
+      ...fiveWords(),
+      tokenAnalysisLinks: [link('ta-e', 'GEN 1:1:0'), link('ta-e', 'GEN 1:2:0')],
+    };
 
-    expect(page.keptIds).toEqual(['ta-a', 'ta-b', 'ta-c', 'ta-d', 'ta-e']);
+    const page = pageOf(tied, scope, makeRequest({ sort: 'usageCount', count: 3 }), formInText);
+
+    expect(page.rows.map((r) => r.surfaceText)).toEqual(['e', 'a', 'b']);
+  });
+
+  it('counts every row the query keeps, beyond the page', () => {
+    const page = pageOf(fiveWords(), scope, makeRequest({ offset: 1, count: 1 }), formInText);
+
+    expect(page.keptCount).toBe(5);
+  });
+
+  it('counts only the rows the query keeps', () => {
+    const page = pageOf(fiveWords(), scope, makeRequest({ search: 'b' }), formInText);
+
+    expect(page.keptCount).toBe(1);
+  });
+
+  it("places a row's first usages among the headings the scope places", () => {
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'word' }],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5'), link('ta-1', 'GEN 1:1/s1:0')],
+    };
+    const headingFirst: CatalogScope = {
+      ...scope,
+      headingPlacements: new Map([['GEN 1:1/s1', { charIndex: 0, order: 0 }]]),
+    };
+
+    const [row] = pageOf(analysis, headingFirst, makeRequest(), formInText).rows;
+
+    expect(row.firstUsages.map((usage) => usage.tokenRef)).toEqual(['GEN 1:1/s1:0', 'GEN 1:1:5']);
   });
 
   it('flags each row whose normalized form another row shares', () => {
@@ -121,7 +161,7 @@ describe('getCatalogPage', () => {
       ],
     };
 
-    const page = getCatalogPage(analysis, scope, makeRequest(), formInText);
+    const page = pageOf(analysis, scope, makeRequest(), formInText);
 
     expect(Object.fromEntries(page.rows.map((r) => [r.analysisId, r.hasHomograph]))).toEqual({
       'ta-1': true,
@@ -131,19 +171,19 @@ describe('getCatalogPage', () => {
   });
 
   it("marks each row whose form the text lacks, once the text's forms are known", () => {
-    const page = getCatalogPage(fiveWords(), scope, makeRequest(), (form) => form !== 'b');
+    const page = pageOf(fiveWords(), scope, makeRequest(), (form) => form !== 'b');
 
     expect(page.rows.filter((r) => r.isNotInText).map((r) => r.analysisId)).toEqual(['ta-b']);
   });
 
   it('marks no row as not in the text while the text is unread', () => {
-    const page = getCatalogPage(fiveWords(), scope, makeRequest(), () => undefined);
+    const page = pageOf(fiveWords(), scope, makeRequest(), () => undefined);
 
     expect(page.rows.some((r) => r.isNotInText)).toBe(false);
   });
 
   it("carries only a row's first usages, counting them all", () => {
-    const [row] = getCatalogPage(muchUsed(), scope, makeRequest(), formInText).rows;
+    const [row] = pageOf(muchUsed(), scope, makeRequest(), formInText).rows;
 
     expect(row.firstUsages.map((usage) => usage.tokenRef)).toEqual(
       Array.from({ length: CATALOG_INLINE_PLACES }, (_unused, index) => `GEN 1:${index + 1}:0`),
@@ -152,7 +192,7 @@ describe('getCatalogPage', () => {
   });
 
   it("carries only a row's first stale places, counting them all", () => {
-    const [row] = getCatalogPage(muchUsed(), scope, makeRequest(), formInText).rows;
+    const [row] = pageOf(muchUsed(), scope, makeRequest(), formInText).rows;
 
     expect(row.firstStaleLocations.map((place) => place.tokenRef)).toEqual(
       Array.from({ length: CATALOG_INLINE_PLACES }, (_unused, index) => `GEN 2:${index + 1}:0`),
@@ -161,13 +201,13 @@ describe('getCatalogPage', () => {
   });
 
   it("leaves out each row's search text, which only the query reads", () => {
-    const page = getCatalogPage(fiveWords(), scope, makeRequest(), formInText);
+    const page = pageOf(fiveWords(), scope, makeRequest(), formInText);
 
     expect(page.rows.some((row) => 'searchText' in row)).toBe(false);
   });
 
   it('counts every row the draft holds, whatever the query keeps', () => {
-    const page = getCatalogPage(
+    const page = pageOf(
       fiveWords(),
       scope,
       makeRequest({ search: 'nothing matches this' }),
@@ -175,6 +215,15 @@ describe('getCatalogPage', () => {
     );
 
     expect(page.rowCount).toBe(5);
+  });
+
+  it('keeps the facets of a list of summaries it has paged before', () => {
+    const summaries = summariesOf(fiveWords());
+    const { facets } = getCatalogPage(summaries, scope, makeRequest(), formInText);
+
+    expect(getCatalogPage(summaries, scope, makeRequest({ search: 'b' }), formInText).facets).toBe(
+      facets,
+    );
   });
 
   it('offers facets taken against every row, not only the rows the filters keep', () => {
@@ -186,14 +235,52 @@ describe('getCatalogPage', () => {
       ],
     };
 
-    const page = getCatalogPage(
-      analysis,
+    const page = pageOf(analysis, scope, makeRequest({ filters: { pos: ['noun'] } }), formInText);
+
+    expect(page.facets.pos).toEqual(['noun', 'verb']);
+  });
+});
+
+describe('locateCatalogRows', () => {
+  it('places every kept row in listing order when no ids are named', () => {
+    const located = locateCatalogRows(
+      summariesOf(fiveWords()),
       scope,
-      makeRequest({ filters: { pos: ['noun'] } }),
+      makeRequest({ search: '' }),
       formInText,
     );
 
-    expect(page.facets.pos).toEqual(['noun', 'verb']);
+    expect(located).toEqual([
+      ['ta-a', 0],
+      ['ta-b', 1],
+      ['ta-c', 2],
+      ['ta-d', 3],
+      ['ta-e', 4],
+    ]);
+  });
+
+  it('places only the named rows, at their places in the whole listing', () => {
+    const located = locateCatalogRows(summariesOf(fiveWords()), scope, makeRequest(), formInText, [
+      'ta-d',
+      'ta-b',
+    ]);
+
+    expect(located).toEqual([
+      ['ta-b', 1],
+      ['ta-d', 3],
+    ]);
+  });
+
+  it('leaves out a named row the query does not keep', () => {
+    const located = locateCatalogRows(
+      summariesOf(fiveWords()),
+      scope,
+      makeRequest({ search: 'b' }),
+      formInText,
+      ['ta-b', 'ta-d'],
+    );
+
+    expect(located).toEqual([['ta-b', 0]]);
   });
 });
 

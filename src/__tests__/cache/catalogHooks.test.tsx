@@ -4,7 +4,9 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useMemo } from 'react';
 import {
+  fetchCatalogPositions,
   useCatalogPlaces,
+  useCatalogPositions,
   useCatalogRowsByIds,
   useCatalogView,
   useDeletionPreview,
@@ -92,7 +94,7 @@ describe('useCatalogView', () => {
     rerender({ search: 'nothing matches this' });
     await settle();
 
-    expect(result.current.view?.keptIds).toStrictEqual([]);
+    expect(result.current.view?.keptCount).toBe(0);
   });
 
   it('keeps the last page on screen while the next request is fetched', async () => {
@@ -108,7 +110,7 @@ describe('useCatalogView', () => {
     await settle();
 
     rerender({ search: 'nothing matches this' });
-    const shown = result.current.view?.keptIds;
+    const shown = result.current.view?.rows.map((row) => row.analysisId);
     await settle();
 
     expect(shown).toStrictEqual(['ta-beginning']);
@@ -164,13 +166,60 @@ describe('useCatalogView', () => {
   it('keeps the last page when fetching it again fails', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
-    await waitFor(() => expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']));
+    await waitFor(() => expect(result.current.view?.keptCount).toBe(1));
     failing('interlinearizer.getCatalogRows');
 
     relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogRows'), ['getCatalogRows']));
     await settle();
 
-    expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']);
+    expect(result.current.view?.rows.map((row) => row.analysisId)).toStrictEqual(['ta-beginning']);
+  });
+});
+
+describe('useCatalogPositions', () => {
+  it('places each named row the listing keeps, by id', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning', 'ta-x']), {
+      wrapper,
+    });
+    await settle();
+
+    expect(result.current).toStrictEqual(new Map([['ta-beginning', 0]]));
+  });
+
+  it('fetches nothing while no ids are named', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogPositions(REQUEST, undefined), { wrapper });
+    await settle();
+
+    expect(result.current).toBeUndefined();
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(0);
+  });
+
+  it('fetches again when a change to the session names the catalog', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useCatalogPositions(REQUEST, ['ta-beginning']), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.locateCatalogRows');
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.locateCatalogRows'), ['getCatalogRows']));
+    await settle();
+
+    expect(timesSent('interlinearizer.locateCatalogRows')).toBe(before + 1);
+  });
+});
+
+describe('fetchCatalogPositions', () => {
+  it('places every row the listing keeps when no ids are named', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+
+    await expect(
+      fetchCatalogPositions(sessionIdOf('interlinearizer.getCatalogRows'), REQUEST),
+    ).resolves.toStrictEqual([['ta-beginning', 0]]);
   });
 });
 

@@ -1,3 +1,4 @@
+import { Canon } from '@sillsdev/scripture';
 import type {
   AssignmentStatus,
   PhraseAnalysis,
@@ -15,11 +16,14 @@ import type {
   ChangeSet,
   IndexDifference,
   RecordChanges,
+  TokenAnalysisSummary,
 } from '../types/analysis-repository';
+import { SUMMARY_PLACE_COUNT } from '../types/analysis-repository';
 import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { splitAnalysisByBook } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
+import { compareDocumentOrder, parseUsage, type CatalogUsage } from '../utils/analysis-query';
 import { preferredLink, preferredLinkByKey } from '../utils/pick-rules';
 import { fileId, idsLacking, type IdsByKey, RecordTable, unfileId } from '../utils/record-table';
 
@@ -139,6 +143,57 @@ const formKeyers = {
   form: (payload: { surfaceText: string }) => [normalizeSurfaceForm(payload.surfaceText)],
 };
 
+/** How many of `tokenRefs` sit in each book, leaving out books with none. */
+function countByBook(tokenRefs: Iterable<string>): Record<string, number> {
+  const counts: Record<string, number> = {};
+  [...tokenRefs].forEach((tokenRef) => {
+    const book = bookOfRef(tokenRef);
+    counts[book] = (counts[book] ?? 0) + 1;
+  });
+  return counts;
+}
+
+/** Orders two usages by verse alone, taking books in canonical order. */
+function compareVerses(a: CatalogUsage, b: CatalogUsage): number {
+  return (
+    Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book) ||
+    a.chapter - b.chapter ||
+    a.verse - b.verse
+  );
+}
+
+/**
+ * The refs among `tokenRefs` in their first verses, in document order: whole verses, as few as hold
+ * {@link SUMMARY_PLACE_COUNT} refs, or all of them when fewer do.
+ */
+function firstVerseRefs(tokenRefs: Iterable<string>): string[] {
+  const usages = [...tokenRefs].map((tokenRef) => parseUsage(tokenRef, undefined));
+  usages.sort(compareDocumentOrder);
+  let end = Math.min(SUMMARY_PLACE_COUNT, usages.length);
+  while (end < usages.length && compareVerses(usages[end - 1], usages[end]) === 0) end += 1;
+  return usages.slice(0, end).map(({ tokenRef }) => tokenRef);
+}
+
+/** Totals the token links to `analysis` from `links`, which must hold every such link. */
+function summarize(
+  analysis: TokenAnalysis,
+  links: readonly TokenAnalysisLink[],
+): TokenAnalysisSummary {
+  const approved = new Set<string>();
+  const stale = new Set<string>();
+  links.forEach(({ status, token }) => {
+    if (status === 'approved') approved.add(token.tokenRef);
+    else if (status === 'stale') stale.add(token.tokenRef);
+  });
+  return {
+    analysis,
+    approvalsByBook: countByBook(approved),
+    staleByBook: countByBook(stale),
+    firstApprovals: firstVerseRefs(approved),
+    firstStale: firstVerseRefs(stale),
+  };
+}
+
 /**
  * An analysis's records by id, with the derived indexes its lookups answer from. Built from the
  * records and kept current as changes are applied. It hands out the records it holds, not copies.
@@ -180,6 +235,18 @@ export class AnalysisIndex {
   /** The approving tokens filed under each normalized surface form. */
   private readonly approvingTokensByForm: IdsByKey = new Map();
 
+  /**
+   * Each token analysis's summary by id, or `undefined` until summaries are first asked for. An
+   * apply leaves the summaries that it may change in place, naming them in `unsummarized`.
+   */
+  private summaries: Map<string, TokenAnalysisSummary> | undefined;
+
+  /** The token analyses whose kept summary an apply may have changed. */
+  private readonly unsummarized = new Set<string>();
+
+  /** The kept summaries as last listed, or `undefined` when an apply may have changed one since. */
+  private summaryList: TokenAnalysisSummary[] | undefined;
+
   constructor(analysis: TextAnalysis) {
     this.tokenAnalyses = new RecordTable('tokenAnalyses', formKeyers, analysis.tokenAnalyses);
     this.phraseAnalyses = new RecordTable('phraseAnalyses', formKeyers, analysis.phraseAnalyses);
@@ -216,6 +283,7 @@ export class AnalysisIndex {
    * put records themselves, not copies.
    */
   apply(changes: ChangeSet): void {
+    if (this.summaries) this.analysesReachedBy(changes).forEach((id) => this.unsummarized.add(id));
     const unsettled = this.tokensReachedBy(changes);
     this.tokenAnalyses.apply(changes.tokenAnalyses);
     this.phraseAnalyses.apply(changes.phraseAnalyses);
@@ -239,6 +307,31 @@ export class AnalysisIndex {
         return size ? [[id, size]] : [];
       }),
     );
+  }
+
+  /**
+   * Every token analysis with totals of the token links to it. The summaries hold the records this
+   * index holds, and are shared between calls, as is the list while no apply changes one.
+   */
+  summarizeTokenAnalyses(): readonly TokenAnalysisSummary[] {
+    if (this.summaryList && this.unsummarized.size === 0) return this.summaryList;
+    if (!this.summaries) {
+      const linksByAnalysis = Map.groupBy(this.tokenLinks.all(), ({ analysisId }) => analysisId);
+      this.summaries = new Map(
+        this.tokenAnalyses
+          .all()
+          .map((ta) => [ta.id, summarize(ta, linksByAnalysis.get(ta.id) ?? [])]),
+      );
+    }
+    const { summaries } = this;
+    this.unsummarized.forEach((id) => {
+      const [ta] = this.tokenAnalyses.get([id]);
+      if (ta) summaries.set(id, summarize(ta, this.tokenLinks.find('analysisId', [id])));
+      else summaries.delete(id);
+    });
+    this.unsummarized.clear();
+    this.summaryList = [...summaries.values()];
+    return this.summaryList;
   }
 
   /**
@@ -474,11 +567,48 @@ export class AnalysisIndex {
         this.approvingTokens,
         rebuilt.approvingTokens,
       ),
+      ...this.summaryDifferencesFrom(rebuilt),
       ...differencesOf(
         'tokenAnalyses by approved form',
         this.approvingTokensByForm,
         rebuilt.approvingTokensByForm,
       ),
+    ];
+  }
+
+  /**
+   * Where the kept summaries differ from `rebuilt`'s, a summary that differs being both missing and
+   * extra; none while no summaries are kept.
+   */
+  private summaryDifferencesFrom(rebuilt: AnalysisIndex): IndexDifference[] {
+    if (!this.summaries) return [];
+    const byId = (summaries: readonly TokenAnalysisSummary[]) =>
+      new Map(summaries.map((summary) => [summary.analysis.id, JSON.stringify(summary)]));
+    const kept = byId(this.summarizeTokenAnalyses());
+    const fresh = byId(rebuilt.summarizeTokenAnalyses());
+    return [...new Set([...kept.keys(), ...fresh.keys()])].flatMap((id): IndexDifference[] =>
+      kept.get(id) === fresh.get(id)
+        ? []
+        : [
+            {
+              index: 'tokenAnalyses by summary',
+              key: id,
+              missing: fresh.has(id) ? [id] : [],
+              extra: kept.has(id) ? [id] : [],
+            },
+          ],
+    );
+  }
+
+  /**
+   * The token analyses whose summary `changes` may alter: those they put or delete, and those named
+   * by a token link they put, or by the stored link that a put or delete replaces.
+   */
+  private analysesReachedBy({ tokenAnalyses, tokenAnalysisLinks }: ChangeSet): string[] {
+    return [
+      ...idsNamedBy(tokenAnalyses),
+      ...this.tokenLinks.get(idsNamedBy(tokenAnalysisLinks)).map(({ analysisId }) => analysisId),
+      ...(tokenAnalysisLinks?.puts ?? []).map(({ analysisId }) => analysisId),
     ];
   }
 

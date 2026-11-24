@@ -26,15 +26,15 @@ function fromWire<T extends Pick<CatalogRow, 'books'>>(
 /** A page of the session's catalog, as the panel reads it. */
 export type CatalogView = Readonly<{
   rows: readonly CatalogPageRow[];
-  keptIds: readonly string[];
+  /** How many rows the request keeps, on this page and off it. */
+  keptCount: number;
   facets: CatalogFacets;
   rowCount: number;
 }>;
 
 /**
- * The first `count` rows of the session's catalog that `request` keeps, with the ids of every kept
- * row. The page is fetched again whenever `request` or `count` changes, or a change names the
- * catalog.
+ * The first `count` rows of the session's catalog that `request` keeps, with how many it keeps. The
+ * page is fetched again whenever `request` or `count` changes, or a change names the catalog.
  *
  * The last page stays while the next is fetched, so a changed query leaves the list on screen until
  * its rows arrive. A failed fetch leaves the last page too, or none if no page has arrived.
@@ -70,6 +70,44 @@ export function useCatalogView(
   const view = fetched?.value;
   const retry = fetched?.failed ? fetched.retry : undefined;
   return useMemo(() => ({ view, retry }), [view, retry]);
+}
+
+/**
+ * Where in the listing of the session's catalog that `request` asks for each kept analysis sits, in
+ * listing order: those of `analysisIds`, or every kept one when `analysisIds` is absent.
+ */
+export async function fetchCatalogPositions(
+  sessionId: string,
+  request: Omit<CatalogRowsRequest, 'offset' | 'count'>,
+  analysisIds?: readonly string[],
+): Promise<[analysisId: string, index: number][]> {
+  return JSON.parse(
+    await papi.commands.sendCommand('interlinearizer.locateCatalogRows', {
+      sessionId,
+      request,
+      analysisIds,
+    }),
+  );
+}
+
+/**
+ * Where in the listing of the session's catalog that `request` asks for each of `analysisIds` sits,
+ * by id, leaving out those it does not keep. Fetched again whenever a change names the catalog.
+ * `undefined` while `analysisIds` is `undefined`, until the positions arrive, and after a fetch of
+ * them fails.
+ */
+export function useCatalogPositions(
+  request: Omit<CatalogRowsRequest, 'offset' | 'count'>,
+  analysisIds: readonly string[] | undefined,
+): ReadonlyMap<string, number> | undefined {
+  const { sessionId } = usePageSession();
+  const key = analysisIds === undefined ? undefined : JSON.stringify([request, analysisIds]);
+  return useNamedFetch(
+    'getCatalogRows',
+    'catalog positions',
+    key,
+    async () => new Map(await fetchCatalogPositions(sessionId, request, analysisIds)),
+  )?.value;
 }
 
 /** The rows of the analyses `analysisIds` names, in that order, leaving out unstored ids. */

@@ -44,6 +44,12 @@ async function handlersOver({
   return { handlers, sessionId, edit };
 }
 
+/** The ids of the rows a served page carries, in order. */
+function rowIds(json: string): string[] {
+  const { rows }: { rows: { analysisId: string }[] } = JSON.parse(json);
+  return rows.map(({ analysisId }) => analysisId);
+}
+
 describe('getCatalogRows', () => {
   it("serves a page of the session's catalog as JSON, each row's books as a list", async () => {
     const { handlers, sessionId } = await handlersOver();
@@ -73,7 +79,7 @@ describe('getCatalogRows', () => {
       request: makeRequest({ filters: { notInText: true } }),
     });
 
-    expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
+    expect(rowIds(json)).toEqual(['ta-god']);
   });
 
   it('keeps no row under the not-in-text filter while the text is still being read', async () => {
@@ -84,7 +90,7 @@ describe('getCatalogRows', () => {
       request: makeRequest({ filters: { notInText: true } }),
     });
 
-    expect(JSON.parse(json).keptIds).toEqual([]);
+    expect(rowIds(json)).toEqual([]);
   });
 
   it('serves the catalog when the source has no text for the current book', async () => {
@@ -102,7 +108,7 @@ describe('getCatalogRows', () => {
       request: makeRequest({ currentBook: 'EXO' }),
     });
 
-    expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
+    expect(rowIds(json)).toEqual(['ta-god']);
   });
 
   it('serves the catalog, logging the failure, when the current book cannot be read', async () => {
@@ -123,7 +129,7 @@ describe('getCatalogRows', () => {
       request: makeRequest(),
     });
 
-    expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
+    expect(rowIds(json)).toEqual(['ta-god']);
     expect(logger.error).toHaveBeenCalledWith(
       'Interlinearizer: could not read GEN to place its headings',
       expect.any(Error),
@@ -139,7 +145,63 @@ describe('getCatalogRows', () => {
       request: makeRequest(),
     });
 
-    expect(JSON.parse(json).keptIds).toEqual(['ta-start', 'ta-god']);
+    expect(rowIds(json)).toEqual(['ta-start', 'ta-god']);
+  });
+});
+
+describe('locateCatalogRows', () => {
+  it('places every kept row in listing order when no ids are named', async () => {
+    const { handlers, sessionId, edit } = await handlersOver();
+    await edit('gloss', glossing('beginning', 'start'));
+
+    const json = await handlers['interlinearizer.locateCatalogRows']({
+      sessionId,
+      request: makeRequest(),
+    });
+
+    expect(JSON.parse(json)).toEqual([
+      ['ta-start', 0],
+      ['ta-god', 1],
+    ]);
+  });
+
+  it('places every kept row when the ids arrive as null', async () => {
+    const { handlers, sessionId } = await handlersOver();
+
+    const json = await handlers['interlinearizer.locateCatalogRows']({
+      sessionId,
+      request: makeRequest(),
+      // eslint-disable-next-line no-null/no-null -- JSON writes an absent list as null
+      analysisIds: null,
+    });
+
+    expect(JSON.parse(json)).toEqual([['ta-god', 0]]);
+  });
+
+  it('places only the named rows that the request keeps', async () => {
+    const { handlers, sessionId, edit } = await handlersOver();
+    await edit('gloss', glossing('beginning', 'start'));
+
+    const json = await handlers['interlinearizer.locateCatalogRows']({
+      sessionId,
+      request: makeRequest({ search: 'god' }),
+      analysisIds: ['ta-start', 'ta-god'],
+    });
+
+    expect(JSON.parse(json)).toEqual([['ta-god', 0]]);
+  });
+
+  it("keeps a row whose form the session's source text lacks under the not-in-text filter", async () => {
+    const { handlers, sessionId } = await handlersOver({
+      isFormInText: (source, form) => (source === 'src' ? form !== 'god' : true),
+    });
+
+    const json = await handlers['interlinearizer.locateCatalogRows']({
+      sessionId,
+      request: makeRequest({ filters: { notInText: true } }),
+    });
+
+    expect(JSON.parse(json)).toEqual([['ta-god', 0]]);
   });
 });
 
@@ -358,6 +420,9 @@ describe('a session not open', () => {
       handlers['interlinearizer.getCatalogRows']({ sessionId, request: makeRequest() }),
     ).rejects.toThrow();
     await expect(
+      handlers['interlinearizer.locateCatalogRows']({ sessionId, request: makeRequest() }),
+    ).rejects.toThrow();
+    await expect(
       handlers['interlinearizer.countUsages']({ sessionId, analysisIds: [] }),
     ).rejects.toThrow();
     await expect(
@@ -389,6 +454,6 @@ describe('a session not open', () => {
       handlers['interlinearizer.previewDeletion']({ sessionId, analysisId: 'ta-god' }),
     ).rejects.toThrow();
 
-    expect(logger.error).toHaveBeenCalledTimes(7);
+    expect(logger.error).toHaveBeenCalledTimes(8);
   });
 });

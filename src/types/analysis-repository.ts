@@ -147,6 +147,33 @@ export type AnalysisLinks = Pick<
 /** The analysis id each token approves, keyed by the approval's normalized form, then by token ref. */
 export type ApprovalsByForm = Record<string, Record<string, string>>;
 
+/** How many places a {@link TokenAnalysisSummary} lists at least, for each status it lists. */
+export const SUMMARY_PLACE_COUNT = 12;
+
+/**
+ * A token analysis with totals of the token links to it. A token counts once per status however
+ * many links carry it to the analysis, and a token approved to two analyses counts toward both.
+ */
+export type TokenAnalysisSummary = Readonly<{
+  analysis: Readonly<TokenAnalysis>;
+  /**
+   * How many tokens hold an approved link to the analysis, by book code, leaving out books with
+   * none.
+   */
+  approvalsByBook: Readonly<Record<string, number>>;
+  /** How many tokens hold a stale link to the analysis, by book code, leaving out books with none. */
+  staleByBook: Readonly<Record<string, number>>;
+  /**
+   * The refs of the tokens approving the analysis in its first verses, in canonical order: whole
+   * verses, as few as hold {@link SUMMARY_PLACE_COUNT} tokens, or every verse when all of them
+   * together hold fewer. Verses are listed whole because where a heading sits in its verse decides
+   * the order of the verse's tokens.
+   */
+  firstApprovals: readonly string[];
+  /** As {@link firstApprovals}, for the tokens holding a stale link to the analysis. */
+  firstStale: readonly string[];
+}>;
+
 /**
  * A difference between a repository's kept indexes and ones built afresh from its records. It can
  * also be a difference between a stored shard and the records that shard should hold.
@@ -370,6 +397,14 @@ export interface AnalysisRepository {
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.
    */
   findApprovalsByForm(normalizedForms: string[]): Promise<ApprovalsByForm>;
+
+  /**
+   * Every token analysis, with totals of the token links to it. The summaries may be shared between
+   * calls, so callers must not change them.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  summarizeTokenAnalyses(): Promise<readonly TokenAnalysisSummary[]>;
 
   /**
    * Reports where the derived indexes the repository keeps differ from ones built afresh from its

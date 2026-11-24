@@ -1,7 +1,12 @@
 /// <reference types="jest" />
 
 import type { DraftProject, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import type { AnalysisLinks, AnalysisRepository, ChangeSet } from '../types/analysis-repository';
+import type {
+  AnalysisLinks,
+  AnalysisRepository,
+  ChangeSet,
+  TokenAnalysisSummary,
+} from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
@@ -547,6 +552,19 @@ function changeInPlace(draft: DraftProject): void {
 /** The ids of `records`, sorted, since lookups promise no order. */
 function idsOf(records: readonly { id: string }[]): string[] {
   return records.map(({ id }) => id).sort();
+}
+
+/** Each summary's id and totals, in id order. */
+function summaryTotals(summaries: readonly TokenAnalysisSummary[]) {
+  return summaries
+    .map(({ analysis, approvalsByBook, staleByBook, firstApprovals, firstStale }) => [
+      analysis.id,
+      approvalsByBook,
+      staleByBook,
+      firstApprovals,
+      firstStale,
+    ])
+    .sort(([a], [b]) => String(a).localeCompare(String(b)));
 }
 
 /** The ids of each kind of link in `links`, sorted, since lookups promise no order. */
@@ -1167,6 +1185,65 @@ export function describeAnalysisRepositoryConformance(
             {
               beginning: { 'GEN 1:1:0': ID.taAnd },
             },
+          );
+        });
+
+        it('summarizes every token analysis with totals of the token links to it', async () => {
+          const repository = await overFullDraft();
+
+          await expect(
+            repository.summarizeTokenAnalyses().then(summaryTotals),
+          ).resolves.toStrictEqual(
+            [
+              [ID.taAnd, { GEN: 1, EXO: 1 }, {}, ['GEN 1:1:0', 'EXO 1:1:0'], []],
+              [ID.taBeginning, {}, {}, [], []],
+              [ID.taUnlinked, {}, {}, [], []],
+            ].sort(([a], [b]) => String(a).localeCompare(String(b))),
+          );
+        });
+
+        it('summarizes each token analysis from its stored record', async () => {
+          const repository = await overFullDraft();
+          const [and] = fullAnalysis().tokenAnalyses;
+
+          const summaries = await repository.summarizeTokenAnalyses();
+
+          expect(
+            unstampedAnalysis({
+              ...emptyAnalysis(),
+              tokenAnalyses: summaries
+                .map(({ analysis }) => analysis)
+                .filter(({ id }) => id === ID.taAnd),
+            }).tokenAnalyses,
+          ).toStrictEqual(
+            unstampedAnalysis({ ...emptyAnalysis(), tokenAnalyses: [and] }).tokenAnalyses,
+          );
+        });
+
+        it('summarizes from the records the applied changes leave', async () => {
+          const repository = await overFullDraft();
+          await repository.summarizeTokenAnalyses();
+          const [, exoAnd] = fullAnalysis().tokenAnalysisLinks;
+
+          await repository.apply({
+            intent: 'staleAndDelete',
+            tokenAnalyses: { puts: [], deletes: [ID.taUnlinked] },
+            tokenAnalysisLinks: { puts: [{ ...exoAnd, status: 'stale' }], deletes: [] },
+          });
+
+          await expect(
+            repository.summarizeTokenAnalyses().then(summaryTotals),
+          ).resolves.toStrictEqual(
+            [
+              [ID.taAnd, { GEN: 1 }, { EXO: 1 }, ['GEN 1:1:0'], ['EXO 1:1:0']],
+              [ID.taBeginning, {}, {}, [], []],
+            ].sort(([a], [b]) => String(a).localeCompare(String(b))),
+          );
+        });
+
+        it('summarizes nothing in a draft never saved', async () => {
+          await expect((await store.open(SOURCE)).summarizeTokenAnalyses()).resolves.toStrictEqual(
+            [],
           );
         });
 

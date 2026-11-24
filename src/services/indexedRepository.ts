@@ -15,6 +15,7 @@ import type {
   DraftState,
   IndexDifference,
   ScopeRecord,
+  TokenAnalysisSummary,
 } from '../types/analysis-repository';
 import { isEmptyDraft } from '../utils/empty-draft';
 import { scopeRecordOf } from '../utils/change-set';
@@ -48,6 +49,7 @@ export abstract class IndexedRepository implements Pick<
   | 'findTokenAnalysesByForm'
   | 'findPhraseAnalysesByForm'
   | 'countApprovals'
+  | 'summarizeTokenAnalyses'
   | 'checkIndexes'
 > {
   async getWholeDraft(): Promise<DraftProject> {
@@ -125,6 +127,16 @@ export abstract class IndexedRepository implements Pick<
 
   findApprovalsByForm(normalizedForms: string[]): Promise<ApprovalsByForm> {
     return this.query((index) => index.findApprovalsByForm(normalizedForms));
+  }
+
+  /**
+   * Every token analysis, with totals of the token links to it. The summaries are shared rather
+   * than copied, so callers must not change them.
+   *
+   * @throws Whatever loading the stored records throws.
+   */
+  async summarizeTokenAnalyses(): Promise<readonly TokenAnalysisSummary[]> {
+    return (await this.indexed()).index.summarizeTokenAnalyses();
   }
 
   /**

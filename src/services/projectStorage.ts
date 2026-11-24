@@ -1299,6 +1299,7 @@ export function openDraftRepository(
     countApprovals: (analysisIds) => queued((repository) => repository.countApprovals(analysisIds)),
     findApprovalsByForm: (normalizedForms) =>
       queued((repository) => repository.findApprovalsByForm(normalizedForms)),
+    summarizeTokenAnalyses: () => queued((repository) => repository.summarizeTokenAnalyses()),
     checkIndexes: () => queued((repository) => repository.checkIndexes()),
   };
 }

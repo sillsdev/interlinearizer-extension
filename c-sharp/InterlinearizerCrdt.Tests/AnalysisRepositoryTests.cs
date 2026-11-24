@@ -324,6 +324,25 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplySkipsAnUpdateMovingALinkNotStoredOntoAnAnalysisNotStored()
+    {
+        await ApplyNext(FullAnalysis());
+        var fresh = Guid.NewGuid();
+        var read = TokenLink(fresh, TaAnd, "GEN 1:1:0", "and");
+
+        var reply = await ApplyNext(new ChangeSet
+        {
+            Intent = "move",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Update(new RecordUpdate<TokenAnalysis>(Token(TaAnd, "and", "and"), Token(TaAnd, "and", "also"))),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Update(
+                new RecordUpdate<TokenAnalysisLink>(read, TokenLink(fresh, Guid.NewGuid(), "GEN 1:1:0", "and"))),
+        });
+
+        await Assert.That(reply.TokenAnalysisLinks).IsNull();
+        await Assert.That((await Repository.GetTokenAnalyses([TaAnd])).Single().Gloss!["en"]).IsEqualTo("also");
+    }
+
+    [Test]
     public async Task ApplyRefusesACreateOfAStoredRecordApplyingNothing()
     {
         await ApplyNext(FullAnalysis());

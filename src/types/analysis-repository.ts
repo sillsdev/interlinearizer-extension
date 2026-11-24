@@ -267,8 +267,9 @@ export interface AnalysisRepository {
    * changes leave alone.
    *
    * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is applied.
-   * @throws {Error} If an id appears more than once in one record kind's changes, a create names a
-   *   stored record's id, or the scope's record names another source project; nothing is applied.
+   * @throws {Error} If an id appears more than once in one record kind's changes, an update's
+   *   `before` and `after` name different ids, a create names a stored record's id, or the scope's
+   *   record names another source project; nothing is applied.
    * @throws {Error} If the changes reach a book whose stored analysis could not be read; nothing is
    *   applied.
    * @throws {Error} If the changes put a link that names an analysis that won't be stored once they

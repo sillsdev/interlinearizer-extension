@@ -756,17 +756,17 @@ export function describeAnalysisRepositoryConformance(
           const read = fixture('tokenAnalyses', ID.taBeginning);
           await repository.apply({
             intent: 'tagPos',
-            tokenAnalyses: updating({ before: read, after: { ...read, pos: 'noun' } }),
+            tokenAnalyses: updating({ before: read, after: { ...read, pos: 'verb' } }),
           });
 
           await repository.apply({
             intent: 'writeGloss',
-            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'start' } } }),
+            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'origin' } } }),
           });
 
           const [stored] = await repository.getTokenAnalyses([ID.taBeginning]);
           expect(unstamped(stored)).toStrictEqual(
-            unstamped({ ...read, pos: 'noun', gloss: { en: 'start' } }),
+            unstamped({ ...read, pos: 'verb', gloss: { en: 'origin' } }),
           );
         });
 
@@ -783,11 +783,11 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'writeGloss',
-            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'start' } } }),
+            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'origin' } } }),
           });
 
           const [stored] = await repository.getTokenAnalyses([ID.taBeginning]);
-          expect(stored.gloss).toStrictEqual({ en: 'start', fr: 'début' });
+          expect(stored.gloss).toStrictEqual({ en: 'origin', fr: 'début' });
         });
 
         it('undoes a gloss edit by writing back only the gloss', async () => {
@@ -795,17 +795,19 @@ export function describeAnalysisRepositoryConformance(
           const read = fixture('tokenAnalyses', ID.taBeginning);
           const inverse = await applyUndoably(repository, {
             intent: 'writeGloss',
-            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'start' } } }),
+            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'origin' } } }),
           });
+          const [glossed] = await repository.getTokenAnalyses([ID.taBeginning]);
+          expect(glossed.gloss).toStrictEqual({ en: 'origin' });
           await repository.apply({
             intent: 'tagPos',
-            tokenAnalyses: updating({ before: read, after: { ...read, pos: 'noun' } }),
+            tokenAnalyses: updating({ before: read, after: { ...read, pos: 'verb' } }),
           });
 
           await repository.apply(inverse);
 
           const [stored] = await repository.getTokenAnalyses([ID.taBeginning]);
-          expect(unstamped(stored)).toStrictEqual(unstamped({ ...read, pos: 'noun' }));
+          expect(unstamped(stored)).toStrictEqual(unstamped({ ...read, pos: 'verb' }));
         });
 
         it("keeps a link's update whose read analysis another apply moved it off and deleted", async () => {

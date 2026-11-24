@@ -16,6 +16,7 @@ import {
   seedRepository,
   silentLogger,
   tokenRefOf,
+  updating,
 } from '../test-helpers';
 
 const book = makeVerseBook([
@@ -84,7 +85,7 @@ describe('describeChange', () => {
     };
     const inverse: ChangeSet = {
       intent: 'move',
-      tokenAnalysisLinks: creating([before]),
+      tokenAnalysisLinks: updating({ before: after, after: before }),
     };
 
     const change = await describeChange(await repositoryOver(), { changes, inverse }, held);

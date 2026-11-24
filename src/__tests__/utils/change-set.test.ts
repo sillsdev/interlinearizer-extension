@@ -102,6 +102,24 @@ describe('patchRecord', () => {
     ).toStrictEqual({ id: 'a' });
   });
 
+  it('removes a key named like an inherited property that after lacks', () => {
+    expect(
+      patchRecord<{ id: string; features: Record<string, string> }>(
+        { id: 'a', features: { toString: 'x', case: 'nom' } },
+        { before: { id: 'a', features: { toString: 'x' } }, after: { id: 'a', features: {} } },
+        ['features'],
+      ),
+    ).toStrictEqual({ id: 'a', features: { case: 'nom' } });
+  });
+
+  it('writes a `__proto__` key as an own key', () => {
+    const after = JSON.parse('{"id":"a","features":{"__proto__":"x"}}');
+
+    const patched = patchRecord({ id: 'a' }, { before: { id: 'a' }, after }, ['features']);
+
+    expect(Object.keys(Reflect.get(patched, 'features'))).toStrictEqual(['__proto__']);
+  });
+
   it('starts a keyed field that the stored record lacks', () => {
     expect(
       patchRecord<{ id: string; gloss?: Record<string, string> }>(

@@ -37,9 +37,9 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// update's before and after name different ids; if a create's id is stored, or is or was stored
     /// as a record of another kind or in another project; if an update's id is stored as another
     /// kind or in another project; if a create or update names a project other than this one; if a
-    /// create or update moves a link onto an analysis stored in another project, or onto one that
-    /// will not be stored once the changes apply; or if an update leaves a stored link on an analysis
-    /// that the changes delete.
+    /// create places a link, or an update moves a stored one, onto an analysis stored in another
+    /// project, or onto one that will not be stored once the changes apply; or if an update leaves a
+    /// stored link on an analysis that the changes delete.
     /// Nothing is applied. Harmony keeps every entity in one table, so two records cannot share an
     /// id across kinds or projects, and a create under a deleted record's id brings that record back.
     /// </exception>
@@ -410,9 +410,10 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         IEnumerable<Guid> DeleteIds { get; }
 
         /// <summary>
-        /// The links of this kind that the changes create, and those that an update moves to
-        /// another analysis, as the update leaves them. An update that keeps its analysis writes no
-        /// analysis, so the stored one stands.
+        /// The links of this kind that the changes create, and the stored ones that an update moves
+        /// to another analysis, as the update leaves them. An update that keeps its analysis writes
+        /// no analysis, so the stored one stands. Holds no update until <see cref="LoadStored"/> has
+        /// run.
         /// </summary>
         IEnumerable<AnalysisLink> WrittenLinks { get; }
 
@@ -462,7 +463,8 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
 
         public IEnumerable<AnalysisLink> WrittenLinks =>
             changes?.Creates.OfType<AnalysisLink>().Concat(changes.Updates
-                .Where(u => u is { Before: AnalysisLink before, After: AnalysisLink after } && before.AnalysisId != after.AnalysisId)
+                .Where(u => u is { Before: AnalysisLink before, After: AnalysisLink after } && before.AnalysisId != after.AnalysisId
+                    && _stored.ContainsKey(u.After.Id))
                 .Select(u => u.After).OfType<AnalysisLink>()) ?? [];
 
         public IEnumerable<AnalysisLink> KeptLinks =>

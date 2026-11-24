@@ -54,8 +54,16 @@ function patchedKeys(stored: unknown, before: unknown, after: unknown): Record<s
   const beforeKeys = isObject(before) ? before : {};
   const afterKeys = isObject(after) ? after : {};
   new Set([...Object.keys(beforeKeys), ...Object.keys(afterKeys)]).forEach((key) => {
-    if (beforeKeys[key] === afterKeys[key]) return;
-    if (key in afterKeys) result[key] = afterKeys[key];
+    const now = Object.hasOwn(afterKeys, key) ? afterKeys[key] : undefined;
+    if ((Object.hasOwn(beforeKeys, key) ? beforeKeys[key] : undefined) === now) return;
+    // Defined rather than assigned, so that a key such as `__proto__` stays an own key.
+    if (Object.hasOwn(afterKeys, key))
+      Object.defineProperty(result, key, {
+        value: now,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     else delete result[key];
   });
   return result;

@@ -17,7 +17,7 @@ import {
   buildVerseStartLabelsByTokenRef,
   slotVerseLabel,
 } from '../utils/verse-superscripts';
-import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import {
@@ -1155,22 +1155,27 @@ export default function ContinuousView({
 
   const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
 
+  // A read-only view draws no focus because it offers nothing to edit. The focus still steers
+  // scrolling.
+  const readOnly = useAnalysisReadOnly();
+  const highlightedTokenRef = readOnly ? undefined : displayFocusedTokenRef;
+
   /**
    * Resolved from the fade-gated `displayFocusedTokenRef` rather than the live focus, so every
    * highlight and link-button decision moves only at the recenter midpoint, behind the fade — never
    * dimming the buttons on the still-visible old strip the instant an external nav reseeds focus.
    * The scroll target `focusedGroupIndex` still reads the live ref, so the jump lands on the new
-   * verse while the fade covers it.
+   * verse while the fade covers it. A read-only view resolves no focus.
    */
   const focus = useMemo(
     () =>
       resolveFocusContext(
-        displayFocusedTokenRef,
+        highlightedTokenRef,
         wordTokenByRef,
         committedPhraseLinkByRef,
         tokenSegmentMap,
       ),
-    [displayFocusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
+    [highlightedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
   );
 
   /**
@@ -1326,7 +1331,7 @@ export default function ContinuousView({
           kind: 'group',
           key: group.tokens[0].ref,
           group,
-          isFocused: group.tokens.some((t) => t.ref === displayFocusedTokenRef),
+          isFocused: group.tokens.some((t) => t.ref === highlightedTokenRef),
           groupRef: getGroupRefSetter(groupIndex),
         };
       }),
@@ -1334,7 +1339,7 @@ export default function ContinuousView({
       renderItems,
       tokenSegmentMap,
       focusedSideIsPrevByItem,
-      displayFocusedTokenRef,
+      highlightedTokenRef,
       verseStartLabelByTokenRef,
       getGroupRefSetter,
     ],

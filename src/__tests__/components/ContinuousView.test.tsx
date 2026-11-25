@@ -52,6 +52,9 @@ import {
  */
 let phraseLinkMap = new Map<string, PhraseAnalysisLink>();
 
+/** What the mocked `useAnalysisReadOnly` reports; reset in `beforeEach`. */
+let mockReadOnly = false;
+
 /**
  * Replaces the phrase-link map with a copy carrying the given link, so the identity change
  * invalidates the memos keyed on it the way a real link edit does.
@@ -72,7 +75,7 @@ const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().m
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  useAnalysisReadOnly: () => false,
+  useAnalysisReadOnly: () => mockReadOnly,
   SessionAnalysisProvider({
     children,
   }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
@@ -129,21 +132,24 @@ jest.mock('../../components/TokenLinkIcon', () => ({
 
 jest.mock('../../components/ArcOverlay', () => ({
   __esModule: true,
-  // Surface the props ContinuousView derives and forwards (hoveredPhraseId, candidatePhraseIds) as
-  // data attributes so DOM queries can assert on values that otherwise only live inside ArcOverlay.
+  // Surface the props ContinuousView derives and forwards as data attributes, so DOM queries can
+  // assert on values that otherwise only live inside ArcOverlay.
   default: ({
     onArcSplit,
     hoveredPhraseId,
+    focusedPhraseId,
     candidatePhraseIds,
   }: Readonly<{
     onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void;
     hoveredPhraseId: string | undefined;
+    focusedPhraseId: string | undefined;
     candidatePhraseIds: ReadonlySet<string>;
   }>) => (
     <button
       type="button"
       data-testid="arc-split-btn"
       data-hovered-phrase-id={hoveredPhraseId ?? ''}
+      data-focused-phrase-id={focusedPhraseId ?? ''}
       data-candidate-phrase-ids={[...candidatePhraseIds].join(',')}
       onClick={() => onArcSplit('phrase-1', 'tok-0')}
     >
@@ -384,6 +390,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  mockReadOnly = false;
   mockKeyAsValueLocalizedStrings();
   scrollIntoViewMock.mockClear();
   tokenLinkIconSpy.mockClear();
@@ -501,6 +508,37 @@ describe('ContinuousView initial render', () => {
 
     const focusedBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     expect(focusedBox).toHaveAttribute('data-focus-state', 'focused');
+  });
+
+  it('marks no phrase as focused in a read-only analysis', () => {
+    mockReadOnly = true;
+    const book = makeBook();
+    renderStrip(book, { focus: 'tok-2' });
+
+    const focusedBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
+    expect(focusedBox).toHaveAttribute('data-focus-state', 'default');
+  });
+
+  it('passes the focused phrase to the arcs', () => {
+    const phraseLink = makePhraseLink('phrase-1', ['tok-2', 'tok-3']);
+    phraseLinkMap.set('tok-2', phraseLink);
+    phraseLinkMap.set('tok-3', phraseLink);
+    renderStrip(makeBook(), { focus: 'tok-2' });
+
+    expect(screen.getByTestId('arc-split-btn')).toHaveAttribute(
+      'data-focused-phrase-id',
+      'phrase-1',
+    );
+  });
+
+  it('passes no focused phrase to the arcs in a read-only analysis', () => {
+    mockReadOnly = true;
+    const phraseLink = makePhraseLink('phrase-1', ['tok-2', 'tok-3']);
+    phraseLinkMap.set('tok-2', phraseLink);
+    phraseLinkMap.set('tok-3', phraseLink);
+    renderStrip(makeBook(), { focus: 'tok-2' });
+
+    expect(screen.getByTestId('arc-split-btn')).toHaveAttribute('data-focused-phrase-id', '');
   });
 
   it('falls back to the live focus while the displayed ref names a token this book lacks', () => {

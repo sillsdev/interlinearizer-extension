@@ -777,8 +777,11 @@ export default function SegmentListView({
                         displayMode={displayMode}
                         placeholderHeightPx={placeholderHeightPx}
                         editPhraseSegmentId={editPhraseSegmentId}
+                        // A read-only view draws no focused word because it offers nothing to edit.
                         focusedTokenRef={
-                          displayMode === 'baseline-text' ? undefined : displayFocusedTokenRef
+                          displayMode === 'baseline-text' || readOnly
+                            ? undefined
+                            : displayFocusedTokenRef
                         }
                         gapTextByWordRef={gapTextByWordRef}
                         localizedStrings={localizedStrings}

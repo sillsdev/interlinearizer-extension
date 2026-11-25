@@ -47,7 +47,15 @@ public record ChangeSet
 /// <summary>What an apply left of one record kind.</summary>
 /// <param name="Puts">Each record created or changed, as stored.</param>
 /// <param name="Deletes">The id of each record deleted.</param>
-public record AppliedRecords<T>(IReadOnlyList<T> Puts, IReadOnlyList<Guid> Deletes);
+public record AppliedRecords<T>(IReadOnlyList<T> Puts, IReadOnlyList<Guid> Deletes)
+{
+    /// <summary>
+    /// The links among <see cref="Deletes"/> that a deleted analysis took with it, as stored before
+    /// the apply; null when there are none.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<T>? Taken { get; init; }
+}
 
 /// <summary>
 /// What an apply changed, by record kind. A kind it left alone is absent, and left off the wire, as

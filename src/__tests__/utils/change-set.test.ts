@@ -364,14 +364,18 @@ describe('applyChangeSet cascade', () => {
   const kept = makeTokenLink('a', 'GEN 1:1:0', { id: 'kept' });
   const other = makeTokenLink('b', 'GEN 1:1:1', { id: 'other' });
 
-  it('deletes each link naming an analysis it deletes, reporting the delete', () => {
+  it('deletes each link naming an analysis it deletes, reporting the delete and the link taken', () => {
     const { draft, applied } = applyChangeSet(
       draftWith({ tokenAnalyses: [payload('a'), payload('b')], tokenAnalysisLinks: [kept, other] }),
       { intent: 'delete', tokenAnalyses: deleting([payload('a')]) },
     );
 
     expect(draft.analysis.tokenAnalysisLinks).toStrictEqual([other]);
-    expect(applied.tokenAnalysisLinks).toStrictEqual({ puts: [], deletes: ['kept'] });
+    expect(applied.tokenAnalysisLinks).toStrictEqual({
+      puts: [],
+      deletes: ['kept'],
+      taken: [kept],
+    });
   });
 
   it('deletes the phrase and segment links of the analyses it deletes', () => {
@@ -451,6 +455,7 @@ describe('applyChangeSet cascade', () => {
     expect(applied.tokenAnalysisLinks).toStrictEqual({
       puts: [added],
       deletes: ['other', 'kept'],
+      taken: [kept],
     });
   });
 
@@ -491,6 +496,23 @@ describe('invertChangeSet', () => {
     ).toStrictEqual({
       intent: 'edit',
       tokenAnalyses: updating({ before: payload('a', 'two'), after: payload('a', 'one') }),
+    });
+  });
+
+  it('creates again the links that a deleted analysis took, as taken', () => {
+    const link = makeTokenLink('a', 'GEN 1:1:0', { id: 'taken' });
+    const changes = { intent: 'delete', tokenAnalyses: deleting([payload('a')]) };
+
+    expect(
+      invertChangeSet(changes, {
+        intent: 'delete',
+        tokenAnalyses: { puts: [], deletes: ['a'] },
+        tokenAnalysisLinks: { puts: [], deletes: ['taken'], taken: [link] },
+      }),
+    ).toStrictEqual({
+      intent: 'delete',
+      tokenAnalyses: creating([payload('a')]),
+      tokenAnalysisLinks: creating([link]),
     });
   });
 

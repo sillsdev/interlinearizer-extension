@@ -55,7 +55,7 @@ type Step = {
  * {@link MAX_UNDO_STEPS}. Each edit is one step, and a new edit drops every step undone before it.
  *
  * A step holds the changes that undo what the apply reports applied. An undo writes only the fields
- * that its edit changed. A link that a deleted analysis took with it is not restored.
+ * that its edit changed. It also brings back the links that a deleted analysis took with it.
  *
  * A re-anchor pass is no step. A step holds records as they read when it was captured. So what an
  * undo or redo restores is re-anchored to the current text of each book that a pass has re-anchored
@@ -125,6 +125,16 @@ export class EditHistory {
   /** How many edits, undos and redos the history has applied to the repository. */
   get applied(): number {
     return this.appliedCount;
+  }
+
+  /**
+   * Forgets every step to undo or redo, so that none writes over changes made elsewhere since. The
+   * states the draft was saved with stay saved.
+   */
+  clear(): void {
+    this.undoable.length = 0;
+    this.redoable.length = 0;
+    this.passes.clear();
   }
 
   /**

@@ -100,7 +100,10 @@ export type RecordUpdate<T> = {
  * that another commit changed since the read stands.
  */
 export type RecordChanges<T> = {
-  /** Records to store under ids that no stored record has. */
+  /**
+   * Records to store under ids that no stored record has. A repository that keeps a deleted record
+   * under the id brings that record back, then writes the fields that differ from it.
+   */
   creates: T[];
   /** Edits to stored records; an edit of a record not stored is skipped. */
   updates: RecordUpdate<T>[];
@@ -130,6 +133,11 @@ export type AppliedRecords<T> = {
   puts: T[];
   /** Ids of the records the apply removed. */
   deletes: string[];
+  /**
+   * The links among `deletes` that a deleted analysis took with it, as stored before the apply;
+   * absent when there are none.
+   */
+  taken?: T[];
 };
 
 /** What an apply changed, by record kind; a kind it left alone is absent. */
@@ -168,7 +176,8 @@ export type ApplyResult = {
   /**
    * What the apply changed: each record created or updated, as stored, and the id of each record
    * deleted. A skipped update or delete is left out, and so is an update that changed nothing. A
-   * delete is added for each link that a deleted analysis took with it.
+   * delete is added for each link that a deleted analysis took with it. Each such link is also
+   * listed under `taken`.
    */
   applied: AppliedChangeSet;
   /** Whether the draft was marked unsaved before the changes applied. */

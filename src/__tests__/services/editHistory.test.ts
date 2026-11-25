@@ -166,15 +166,17 @@ describe('EditHistory', () => {
 
   it('returns with an undo the links that the repository deleted with an analysis', async () => {
     const { history, repository } = makeHistory();
+    const linked = makeTokenLink('a', 'GEN 1:1:0', { id: 'linked' });
     await history.apply(putting('a'));
-    await repository.apply({
-      intent: 'link',
-      tokenAnalysisLinks: creating([makeTokenLink('a', 'GEN 1:1:0', { id: 'linked' })]),
-    });
+    await repository.apply({ intent: 'link', tokenAnalysisLinks: creating([linked]) });
 
     const undone = await history.undo();
 
-    expect(undone?.changes.tokenAnalysisLinks).toStrictEqual({ puts: [], deletes: ['linked'] });
+    expect(undone?.changes.tokenAnalysisLinks).toStrictEqual({
+      puts: [],
+      deletes: ['linked'],
+      taken: [linked],
+    });
   });
 
   it('has nothing to undo before any edit', async () => {
@@ -243,6 +245,88 @@ describe('EditHistory', () => {
 
     await history.redo();
     await expect(storedIds()).resolves.toStrictEqual(['a']);
+  });
+});
+
+describe("EditHistory's undo of an analysis delete", () => {
+  /** A history over payload `a` with a link to it. */
+  async function overLinkedPayload() {
+    const made = makeHistory();
+    const link = makeTokenLink('a', 'GEN 1:1:0');
+    await made.repository.apply({
+      intent: 'seed',
+      tokenAnalyses: creating([payload('a')]),
+      tokenAnalysisLinks: creating([link]),
+    });
+    return { ...made, link };
+  }
+
+  it('brings back the links that the delete took with it', async () => {
+    const { history, repository, link } = await overLinkedPayload();
+    await history.apply({ intent: 'delete a', tokenAnalyses: deleting([payload('a')]) });
+
+    await history.undo();
+
+    await expect(repository.findLinksToAnalyses(['a'])).resolves.toMatchObject({
+      tokenAnalysisLinks: [link],
+    });
+  });
+
+  it('takes the links again on redo', async () => {
+    const { history, repository } = await overLinkedPayload();
+    await history.apply({ intent: 'delete a', tokenAnalyses: deleting([payload('a')]) });
+    await history.undo();
+
+    await history.redo();
+
+    await expect(repository.findLinksToAnalyses(['a'])).resolves.toMatchObject({
+      tokenAnalysisLinks: [],
+    });
+  });
+});
+
+describe("EditHistory's clear", () => {
+  it('leaves nothing to undo', async () => {
+    const { history, storedIds } = makeHistory();
+    await history.apply(putting('a'));
+
+    history.clear();
+
+    expect(history.canUndo).toBe(false);
+    await expect(history.undo()).resolves.toBeUndefined();
+    await expect(storedIds()).resolves.toStrictEqual(['a']);
+  });
+
+  it('leaves nothing to redo', async () => {
+    const { history } = makeHistory();
+    await history.apply(putting('a'));
+    await history.undo();
+
+    history.clear();
+
+    expect(history.canRedo).toBe(false);
+  });
+
+  it('records a later edit as a step to undo', async () => {
+    const { history, storedIds } = makeHistory();
+    await history.apply(putting('a'));
+    history.clear();
+
+    await history.apply(putting('b'));
+    await history.undo();
+
+    await expect(storedIds()).resolves.toStrictEqual(['a']);
+  });
+
+  it('keeps the states the draft was saved with', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'), { unsavedMark: 'clear' });
+    history.clear();
+    await history.apply(putting('b'));
+
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
   });
 });
 

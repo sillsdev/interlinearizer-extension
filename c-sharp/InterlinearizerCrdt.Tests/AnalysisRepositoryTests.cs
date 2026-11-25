@@ -429,7 +429,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyRecreatesADeletedRecordThatIsCreatedAgain()
+    public async Task ApplyBringsBackADeletedRecordThatIsCreatedAgainWithOnlyAnUndelete()
     {
         await ApplyNext(FullAnalysis());
         await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
@@ -438,6 +438,68 @@ public class AnalysisRepositoryTests : CrdtTestBase
 
         var stored = (await Repository.GetTokenAnalyses([TaUnlinked])).Single();
         await Assert.That(stored.DeletedAt).IsNull();
+        var commit = await LatestCommit();
+        var changes = await DbContext.ChangeEntities.Where(c => c.CommitId == commit.Id).ToListAsync();
+        await Assert.That(changes.Select(c => c.Change.GetType())).IsEquivalentTo([typeof(UndeleteChange<TokenAnalysis>)]);
+    }
+
+    [Test]
+    public async Task ApplyReportsADeletedRecordThatIsCreatedAgainAsPut()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        var reply = await ApplyNext(new ChangeSet { Intent = "restore", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaUnlinked, "spare", "spare")) });
+
+        await Assert.That(IdsOf(reply.TokenAnalyses!.Puts)).IsEquivalentTo([TaUnlinked]);
+    }
+
+    [Test]
+    public async Task ApplyWritesTheFieldsThatDifferFromADeletedRecordThatIsCreatedAgain()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        await ApplyNext(new ChangeSet { Intent = "restore", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaUnlinked, "spare", "extra")) });
+
+        var stored = (await Repository.GetTokenAnalyses([TaUnlinked])).Single();
+        await Assert.That(stored.Gloss).IsEquivalentTo(new MultiString { ["en"] = "extra" });
+        var commit = await LatestCommit();
+        var changes = await DbContext.ChangeEntities.Where(c => c.CommitId == commit.Id).ToListAsync();
+        var patch = changes.Select(c => c.Change).OfType<PatchTokenAnalysisChange>().Single();
+        await Assert.That(patch.Gloss).IsEquivalentTo(new Dictionary<string, string?> { ["en"] = "extra" });
+        await Assert.That(patch.SurfaceText.HasValue).IsFalse();
+    }
+
+    [Test]
+    public async Task ApplyKeepsAnEditThatArrivesLateDatedBetweenTheDeleteAndTheCreateThatBringsTheRecordBack()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var editAt = NextDate();
+        await ApplyNext(new ChangeSet { Intent = "restore", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaUnlinked, "spare", "spare")) });
+
+        await WriteChangeAt(editAt, [new PatchTokenAnalysisChange(TaUnlinked) { Pos = new("noun") }]);
+
+        var stored = (await Repository.GetTokenAnalyses([TaUnlinked])).Single();
+        await Assert.That(stored.Pos).IsEqualTo("noun");
+    }
+
+    [Test]
+    public async Task ApplyBringsBackTheLinksADeletedAnalysisTookWhenTheyAreCreatedAgain()
+    {
+        await ApplyNext(FullAnalysis());
+        var reply = await ApplyNext(new ChangeSet { Intent = "deleteAnd", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaAnd) });
+
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "restore",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Create(Token(TaAnd, "and", "and")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create([.. reply.TokenAnalysisLinks!.Taken!]),
+        });
+
+        await Assert.That(IdsOf(await Repository.FindLinksToAnalyses([TaAnd]).ContinueWith(t => t.Result.TokenAnalysisLinks)))
+            .IsEquivalentTo([TlGenAnd, TlExoAnd]);
     }
 
     [Test]
@@ -488,6 +550,33 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyReportsTheLinksADeletedAnalysisTookWithItWholeAsStoredBefore()
+    {
+        await ApplyNext(FullAnalysis());
+
+        var reply = await ApplyNext(new ChangeSet { Intent = "deleteAnd", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaAnd) });
+
+        var taken = reply.TokenAnalysisLinks!.Taken!;
+        await Assert.That(IdsOf(taken)).IsEquivalentTo([TlGenAnd, TlExoAnd]);
+        await Assert.That(taken.Select(l => l.DeletedAt)).All().Satisfy(d => d.IsNull());
+        await Assert.That(taken.Select(l => l.Token.TokenRef)).IsEquivalentTo(["GEN 1:1:0", "EXO 1:1:0"]);
+    }
+
+    [Test]
+    public async Task ApplyReportsNoTakenLinksForADeleteThatTakesNone()
+    {
+        await ApplyNext(FullAnalysis());
+
+        var reply = await ApplyNext(new ChangeSet
+        {
+            Intent = "deleteLink",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Delete(TlExoAnd),
+        });
+
+        await Assert.That(reply.TokenAnalysisLinks!.Taken).IsNull();
+    }
+
+    [Test]
     public async Task ApplyLeavesALinkDeletedEarlierOutOfWhatItReports()
     {
         await ApplyNext(FullAnalysis());
@@ -531,6 +620,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
 
         await Assert.That(await Repository.FindLinksToAnalyses([TaUnlinked]).ContinueWith(t => t.Result.TokenAnalysisLinks)).IsEmpty();
         await Assert.That(reply.TokenAnalysisLinks!.Deletes).IsEquivalentTo([TlGenBeginning]);
+        await Assert.That(IdsOf(reply.TokenAnalysisLinks.Taken!)).IsEquivalentTo([TlGenBeginning]);
     }
 
     [Test]

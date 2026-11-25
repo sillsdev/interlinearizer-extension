@@ -3,12 +3,14 @@
 import { mkdtempSync, rmSync } from 'fs';
 import os from 'os';
 import path from 'path';
+import type { TokenAnalysis } from 'interlinearizer';
 import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../services/csharpRepository';
+import { EditHistory } from '../../services/editHistory';
 import {
   describeAnalysisRepositoryConformance,
   type ConformanceStore,
 } from '../analysis-repository-conformance';
-import { creating } from '../test-helpers';
+import { creating, deleting, FIXTURE_STAMPS, makeTokenLink, updating } from '../test-helpers';
 import { FakePapi } from './fake-papi';
 
 let dataDirectory: string;
@@ -87,4 +89,69 @@ function createStore(): ConformanceStore {
   };
 }
 
-describeAnalysisRepositoryConformance('CSharpRepository', [], createStore);
+describeAnalysisRepositoryConformance('CSharpRepository', ['undo'], createStore);
+
+describe('EditHistory over CSharpRepository', () => {
+  const analysis: TokenAnalysis = {
+    id: crypto.randomUUID(),
+    ...FIXTURE_STAMPS,
+    surfaceText: 'beginning',
+    gloss: { en: 'start' },
+  };
+  const link = makeTokenLink(analysis.id, 'GEN 1:1:9', { id: crypto.randomUUID() });
+
+  /** A history over a host project holding `analysis` and `link`. */
+  async function overLinkedAnalysis() {
+    const store = createStore();
+    const repository = await store.open('source');
+    await repository.apply({
+      intent: 'seed',
+      tokenAnalyses: creating([analysis]),
+      tokenAnalysisLinks: creating([link]),
+    });
+    return { history: new EditHistory(repository), repository };
+  }
+
+  it('undoes an edit, returning the analysis as it was', async () => {
+    const { history, repository } = await overLinkedAnalysis();
+    await history.apply({
+      intent: 'gloss',
+      tokenAnalyses: updating({
+        before: analysis,
+        after: { ...analysis, gloss: { en: 'origin' } },
+      }),
+    });
+
+    await history.undo();
+
+    const [stored] = await repository.getTokenAnalyses([analysis.id]);
+    expect(stored.gloss).toStrictEqual({ en: 'start' });
+  });
+
+  it('redoes an undone edit', async () => {
+    const { history, repository } = await overLinkedAnalysis();
+    await history.apply({
+      intent: 'gloss',
+      tokenAnalyses: updating({
+        before: analysis,
+        after: { ...analysis, gloss: { en: 'origin' } },
+      }),
+    });
+    await history.undo();
+
+    await history.redo();
+
+    const [stored] = await repository.getTokenAnalyses([analysis.id]);
+    expect(stored.gloss).toStrictEqual({ en: 'origin' });
+  });
+
+  it('undoes an analysis delete, bringing back the links it took', async () => {
+    const { history, repository } = await overLinkedAnalysis();
+    await history.apply({ intent: 'delete', tokenAnalyses: deleting([analysis]) });
+
+    await history.undo();
+
+    const { tokenAnalysisLinks } = await repository.findLinksToAnalyses([analysis.id]);
+    expect(tokenAnalysisLinks.map(({ id }) => id)).toStrictEqual([link.id]);
+  });
+});

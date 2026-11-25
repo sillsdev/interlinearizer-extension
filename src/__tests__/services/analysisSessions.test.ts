@@ -1537,6 +1537,53 @@ describe('AnalysisSessions', () => {
     });
   });
 
+  describe('clearHistory', () => {
+    const putting = (id: string) => ({
+      intent: `put ${id}`,
+      tokenAnalyses: creating([{ id, ...FIXTURE_STAMPS, surfaceText: id }]),
+    });
+
+    it("leaves nothing to undo in the source project's session", async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.runEdit(sessionId, (session) => session.history.apply(putting('a')));
+
+      await sessions.clearHistory(SOURCE);
+
+      await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
+    });
+
+    it("leaves nothing to redo in the source project's session", async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.runEdit(sessionId, (session) => session.history.apply(putting('a')));
+      await sessions.undo(sessionId);
+
+      await sessions.clearHistory(SOURCE);
+
+      await expect(sessions.redo(sessionId)).resolves.toBeUndefined();
+    });
+
+    it("leaves another source project's session its history", async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.runEdit(sessionId, (session) => session.history.apply(putting('a')));
+
+      await sessions.clearHistory(OTHER_SOURCE);
+
+      await expect(sessions.undo(sessionId)).resolves.toMatchObject({
+        changes: { intent: 'put a' },
+      });
+    });
+
+    it("does nothing on a Paratext 9 import's session", async () => {
+      const { sessions } = makeSessions([makeImport()]);
+      await sessions.open(SOURCE, undefined, 'import-id');
+
+      await expect(sessions.clearHistory(SOURCE)).resolves.toBeUndefined();
+    });
+  });
+
   describe('sessionIdFor', () => {
     it("names the source project's open session", async () => {
       const { sessions } = makeSessions();

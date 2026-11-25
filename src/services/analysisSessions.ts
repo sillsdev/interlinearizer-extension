@@ -819,6 +819,17 @@ export class AnalysisSessions {
     });
   }
 
+  /**
+   * In the session's turn, forgets every edit that the source project's session could undo or redo,
+   * so that none writes over changes made elsewhere since. Does nothing when the source has no
+   * session open or only a read-only one.
+   */
+  clearHistory(sourceProjectId: string): Promise<void> {
+    const entry = this.writableEntry(sourceProjectId);
+    if (!entry) return Promise.resolve();
+    return this.run(entry.session.id, async () => entry.session.history.clear());
+  }
+
   /** The id of the session open on the source project, or `undefined` when the source has none open. */
   sessionIdFor(sourceProjectId: string): string | undefined {
     return this.sessionsBySource.get(sourceProjectId)?.session.id;

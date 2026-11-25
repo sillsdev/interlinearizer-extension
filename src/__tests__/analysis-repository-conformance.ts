@@ -22,7 +22,8 @@ import {
  *
  * - `scope`: {@link AnalysisRepository.getScope} and {@link ChangeSet.scope}.
  * - `undo`: applying the changes that {@link invertChangeSet} builds from an apply. They undo its
- *   creates and deletes as well as its updates.
+ *   creates and deletes as well as its updates, and bring back the links that a deleted analysis
+ *   took with it.
  * - `draftState`: the unsaved mark (`dirty`, `keepDirty`, `wasDirty`, and
  *   {@link AnalysisRepository.markClean}), {@link AnalysisRepository.exportForCopy},
  *   {@link AnalysisRepository.getDraftState}, and {@link AnalysisRepository.findUnlinkedPayloads}.
@@ -902,6 +903,12 @@ export function describeAnalysisRepositoryConformance(
           expect([...(applied.tokenAnalysisLinks?.deletes ?? [])].sort()).toStrictEqual(
             [ID.tlGenAnd, ID.tlExoAnd].sort(),
           );
+          expect(unstampedInIdOrder(applied.tokenAnalysisLinks?.taken ?? [])).toStrictEqual(
+            unstampedInIdOrder([
+              fixture('tokenAnalysisLinks', ID.tlGenAnd),
+              fixture('tokenAnalysisLinks', ID.tlExoAnd),
+            ]),
+          );
           await expect(repository.findLinksToAnalyses([ID.taAnd])).resolves.toStrictEqual({
             tokenAnalysisLinks: [],
             phraseAnalysisLinks: [],
@@ -1709,6 +1716,33 @@ export function describeAnalysisRepositoryConformance(
           await (await store.open(SOURCE)).apply(inverse);
 
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
+        });
+
+        it('brings back the links that an analysis delete took with it', async () => {
+          const repository = await overFullDraft();
+          const inverse = await applyUndoably(repository, {
+            intent: 'deleteAnd',
+            tokenAnalyses: deleting([fixture('tokenAnalyses', ID.taAnd)]),
+          });
+
+          await repository.apply(inverse);
+
+          await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
+        });
+
+        it('takes the links again when the undo is redone', async () => {
+          const repository = await overFullDraft();
+          const deleteAnd: ChangeSet = {
+            intent: 'deleteAnd',
+            tokenAnalyses: deleting([fixture('tokenAnalyses', ID.taAnd)]),
+          };
+          const inverse = await applyUndoably(repository, deleteAnd);
+          const deleted = await readStored();
+          const redo = await applyUndoably(repository, inverse);
+
+          await repository.apply(redo);
+
+          await expect(readStored()).resolves.toStrictEqual(deleted);
         });
 
         it('keeps indexes that match its records through undo and redo', async () => {

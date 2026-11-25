@@ -100,7 +100,10 @@ export type RecordUpdate<T> = {
  * that another commit changed since the read stands.
  */
 export type RecordChanges<T> = {
-  /** Records to store under ids that no stored record has. */
+  /**
+   * Records to store under ids that no stored record has. A repository that keeps a deleted record
+   * under the id writes the fields that differ from that record, then brings the record back.
+   */
   creates: T[];
   /** Edits to stored records; an edit of a record not stored is skipped. */
   updates: RecordUpdate<T>[];
@@ -130,6 +133,11 @@ export type AppliedRecords<T> = {
   puts: T[];
   /** Ids of the records the apply removed. */
   deletes: string[];
+  /**
+   * The links among `deletes` that a deleted analysis took with it, as stored before the apply;
+   * absent when there are none.
+   */
+  taken?: T[];
 };
 
 /** What an apply changed, by record kind; a kind it left alone is absent. */
@@ -146,7 +154,8 @@ export type AppliedChangeSet = {
 export type ApplyOptions = {
   /**
    * Leave the draft as saved or unsaved as it was, for bookkeeping such as a re-anchor pass rather
-   * than an edit. Absent, the draft is marked unsaved.
+   * than an edit. Absent, the draft is marked unsaved. A repository with no unsaved mark ignores
+   * it.
    */
   keepDirty?: boolean;
   /**
@@ -168,11 +177,14 @@ export type ApplyResult = {
   /**
    * What the apply changed: each record created or updated, as stored, and the id of each record
    * deleted. A skipped update or delete is left out, and so is an update that changed nothing. A
-   * delete is added for each link that a deleted analysis took with it.
+   * delete is added for each link that a deleted analysis took with it. Each such link is also
+   * listed under `taken`.
    */
   applied: AppliedChangeSet;
   /** Whether the draft was marked unsaved before the changes applied. */
   wasDirty: boolean;
+  /** Whether the draft is marked unsaved once the changes apply. */
+  dirty: boolean;
 };
 
 /** Links of every kind, one list per kind. */
@@ -261,10 +273,13 @@ export interface AnalysisRepository {
   markClean(): Promise<void>;
 
   /**
-   * Applies `changes` to the stored draft whole or not at all, marked unsaved unless `options`
-   * keeps the mark, and stamped with this build's model version. A draft never saved counts as an
+   * Applies `changes` to the stored draft whole or not at all. A draft never saved counts as an
    * empty one. Deleting an analysis also deletes each stored link that names it and that the
    * changes leave alone.
+   *
+   * A repository with an unsaved mark marks the draft unsaved, unless `options` keeps the mark. A
+   * repository that stores the draft's envelope stamps the envelope with this build's model
+   * version.
    *
    * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is applied.
    * @throws {Error} If an id appears more than once in one record kind's changes, an update's

@@ -42,6 +42,12 @@ public class ChangeSerializationTests
         yield return () => ("PatchTokenAnalysisLinkChange", Fixtures.PatchTokenAnalysisLink(Id));
         yield return () => ("PatchPhraseAnalysisChange", Fixtures.PatchPhraseAnalysis(Id));
         yield return () => ("PatchPhraseAnalysisLinkChange", Fixtures.PatchPhraseAnalysisLink(Id));
+        yield return () => ("undelete:SegmentAnalysis", new UndeleteChange<SegmentAnalysis>(Id));
+        yield return () => ("undelete:SegmentAnalysisLink", new UndeleteChange<SegmentAnalysisLink>(Id));
+        yield return () => ("undelete:TokenAnalysis", new UndeleteChange<TokenAnalysis>(Id));
+        yield return () => ("undelete:TokenAnalysisLink", new UndeleteChange<TokenAnalysisLink>(Id));
+        yield return () => ("undelete:PhraseAnalysis", new UndeleteChange<PhraseAnalysis>(Id));
+        yield return () => ("undelete:PhraseAnalysisLink", new UndeleteChange<PhraseAnalysisLink>(Id));
     }
 
     [Test]

@@ -109,6 +109,7 @@ describe('CSharpRepository', () => {
     await expect(repository.apply(changes)).resolves.toStrictEqual({
       applied,
       wasDirty: false,
+      dirty: false,
     });
 
     expect(send).toHaveBeenCalledWith(`${REPOSITORY_COMMAND_PREFIX}apply`, {
@@ -161,9 +162,16 @@ describe('CSharpRepository', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it('marks the draft clean without asking the host, since every apply is stored', async () => {
+    const { send, repository } = createRepository();
+
+    await expect(repository.markClean()).resolves.toBeUndefined();
+
+    expect(send).not.toHaveBeenCalled();
+  });
+
   const unsupported: { method: string; call: (r: AnalysisRepository) => Promise<unknown> }[] = [
     { method: 'exportForCopy', call: (r) => r.exportForCopy() },
-    { method: 'markClean', call: (r) => r.markClean() },
     { method: 'getScope', call: (r) => r.getScope() },
     { method: 'getDraftState', call: (r) => r.getDraftState() },
     { method: 'findUnlinkedPayloads', call: (r) => r.findUnlinkedPayloads() },

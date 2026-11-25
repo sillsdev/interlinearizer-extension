@@ -127,6 +127,7 @@ function applyRecordChanges<T extends { id: string }>(
   changes: RecordChanges<T> | undefined,
   kind: string,
   keyed: readonly string[],
+  taken: T[] = [],
 ): { records: T[]; applied?: AppliedRecords<T> } {
   if (!changes) return { records };
   const named = new Set<string>();
@@ -176,6 +177,7 @@ function applyRecordChanges<T extends { id: string }>(
   const applied: AppliedRecords<T> = {
     puts: [...replaced.values(), ...changes.creates],
     deletes: [...deleted],
+    ...(taken.length > 0 && { taken }),
   };
   return {
     records: next,
@@ -184,32 +186,40 @@ function applyRecordChanges<T extends { id: string }>(
 }
 
 /**
- * `changes` to one link kind, with a delete added for each of `links` that names one of
- * `deletedAnalyses` and that `changes` leave alone.
+ * Applies one link kind's `changes`, also deleting each of `links` that names one of
+ * `deletedAnalyses` and that `changes` leave alone. The apply reports those links as taken.
  */
-function withCascade<T extends { id: string; analysisId: string }>(
+function applyLinkChanges<T extends { id: string; analysisId: string }>(
   links: T[],
   changes: RecordChanges<T> | undefined,
   deletedAnalyses: AppliedRecords<{ id: string }> | undefined,
-): RecordChanges<T> | undefined {
-  if (!deletedAnalyses || deletedAnalyses.deletes.length === 0) return changes;
+  kind: string,
+  keyed: readonly string[],
+): { records: T[]; applied?: AppliedRecords<T> } {
+  if (!deletedAnalyses?.deletes.length) return applyRecordChanges(links, changes, kind, keyed);
   const deleted = new Set(deletedAnalyses.deletes);
   const named = new Set(changes ? idsOf(changes) : []);
   const taken = links.filter(({ id, analysisId }) => deleted.has(analysisId) && !named.has(id));
-  if (taken.length === 0) return changes;
-  return {
-    creates: changes?.creates ?? [],
-    updates: changes?.updates ?? [],
-    deletes: [...(changes?.deletes ?? []), ...taken],
-  };
+  if (taken.length === 0) return applyRecordChanges(links, changes, kind, keyed);
+  return applyRecordChanges(
+    links,
+    {
+      creates: changes?.creates ?? [],
+      updates: changes?.updates ?? [],
+      deletes: [...(changes?.deletes ?? []), ...taken],
+    },
+    kind,
+    keyed,
+    taken,
+  );
 }
 
 /**
  * Applies `changes` to `draft`, leaving `draft` as it was. An update writes only the fields that
  * differ between its `before` and its `after`, so a field it leaves alone keeps the draft's value.
- * Deleting an analysis also deletes each link that names it and that `changes` leave alone. The
- * result is marked unsaved. It shares created records with `changes`, and every record that the
- * changes leave alone with `draft`.
+ * Deleting an analysis also deletes each link that names it and that `changes` leave alone,
+ * reporting the link as taken. The result is marked unsaved. It shares created records with
+ * `changes`, and every record that the changes leave alone with `draft`.
  *
  * @throws {Error} If an id appears more than once in one record kind's changes, an update's
  *   `before` and `after` name different ids, a create names a stored record's id, or the scope's
@@ -240,25 +250,24 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
     'phrase analysis',
     KEYED_FIELDS.phraseAnalyses,
   );
-  const segmentAnalysisLinks = applyRecordChanges(
+  const segmentAnalysisLinks = applyLinkChanges(
     analysis.segmentAnalysisLinks,
-    withCascade(
-      analysis.segmentAnalysisLinks,
-      changes.segmentAnalysisLinks,
-      segmentAnalyses.applied,
-    ),
+    changes.segmentAnalysisLinks,
+    segmentAnalyses.applied,
     'segment analysis link',
     KEYED_FIELDS.segmentAnalysisLinks,
   );
-  const tokenAnalysisLinks = applyRecordChanges(
+  const tokenAnalysisLinks = applyLinkChanges(
     analysis.tokenAnalysisLinks,
-    withCascade(analysis.tokenAnalysisLinks, changes.tokenAnalysisLinks, tokenAnalyses.applied),
+    changes.tokenAnalysisLinks,
+    tokenAnalyses.applied,
     'token analysis link',
     KEYED_FIELDS.tokenAnalysisLinks,
   );
-  const phraseAnalysisLinks = applyRecordChanges(
+  const phraseAnalysisLinks = applyLinkChanges(
     analysis.phraseAnalysisLinks,
-    withCascade(analysis.phraseAnalysisLinks, changes.phraseAnalysisLinks, phraseAnalyses.applied),
+    changes.phraseAnalysisLinks,
+    phraseAnalyses.applied,
     'phrase analysis link',
     KEYED_FIELDS.phraseAnalysisLinks,
   );
@@ -295,21 +304,24 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
 /**
  * The changes that undo one record kind's `changes`, as far as `applied` reports them applied: each
  * create applied becomes a delete, each delete applied a create, and each update applied the
- * reverse update.
+ * reverse update. Each link that `applied` reports taken is created again as it was taken.
  */
 function invertRecordChanges<T extends { id: string }>(
   changes: RecordChanges<T> | undefined,
   applied: AppliedRecords<T> | undefined,
 ): RecordChanges<T> | undefined {
-  if (!changes || !applied) return undefined;
+  if (!applied) return undefined;
   const put = new Set(applied.puts.map(({ id }) => id));
   const deleted = new Set(applied.deletes);
   const inverse: RecordChanges<T> = {
-    creates: changes.deletes.filter(({ id }) => deleted.has(id)),
-    updates: changes.updates
+    creates: [
+      ...(changes?.deletes ?? []).filter(({ id }) => deleted.has(id)),
+      ...(applied.taken ?? []),
+    ],
+    updates: (changes?.updates ?? [])
       .filter(({ after }) => put.has(after.id))
       .map(({ before, after }) => ({ before: after, after: before })),
-    deletes: changes.creates.filter(({ id }) => put.has(id)),
+    deletes: (changes?.creates ?? []).filter(({ id }) => put.has(id)),
   };
   return inverse.creates.length > 0 || inverse.updates.length > 0 || inverse.deletes.length > 0
     ? inverse
@@ -318,7 +330,7 @@ function invertRecordChanges<T extends { id: string }>(
 
 /**
  * The changes that undo `changes`, as far as `applied` reports them applied. A link that a deleted
- * analysis took with it is not restored.
+ * analysis took with it is created again as it was taken.
  */
 export function invertChangeSet(changes: ChangeSet, applied: AppliedChangeSet): ChangeSet {
   const segmentAnalyses = invertRecordChanges(changes.segmentAnalyses, applied.segmentAnalyses);

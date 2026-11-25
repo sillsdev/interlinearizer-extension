@@ -77,7 +77,13 @@ public static class InterlinearizerCrdtKernel
             .Add<DeleteChange<PhraseAnalysis>>()
             .Add<CreatePhraseAnalysisLinkChange>()
             .Add<PatchPhraseAnalysisLinkChange>()
-            .Add<DeleteChange<PhraseAnalysisLink>>();
+            .Add<DeleteChange<PhraseAnalysisLink>>()
+            .Add<UndeleteChange<SegmentAnalysis>>()
+            .Add<UndeleteChange<SegmentAnalysisLink>>()
+            .Add<UndeleteChange<TokenAnalysis>>()
+            .Add<UndeleteChange<TokenAnalysisLink>>()
+            .Add<UndeleteChange<PhraseAnalysis>>()
+            .Add<UndeleteChange<PhraseAnalysisLink>>();
 
         config.ModelVersionBuilder
             .Add(0, "Analysis entities", v => v
@@ -102,7 +108,14 @@ public static class InterlinearizerCrdtKernel
             .Add(1, "Interlinear projects", v => v
                 .Change<CreateInterlinearProjectChange>()
                 .Change<PatchInterlinearProjectChange>()
-                .Change<DeleteChange<InterlinearProject>>());
+                .Change<DeleteChange<InterlinearProject>>())
+            .Add(2, "Undeletes", v => v
+                .Change<UndeleteChange<SegmentAnalysis>>()
+                .Change<UndeleteChange<SegmentAnalysisLink>>()
+                .Change<UndeleteChange<TokenAnalysis>>()
+                .Change<UndeleteChange<TokenAnalysisLink>>()
+                .Change<UndeleteChange<PhraseAnalysis>>()
+                .Change<UndeleteChange<PhraseAnalysisLink>>());
 
         // Every lookup starts from the project, so each index leads with it.
         config.ObjectTypeListBuilder.DefaultAdapter()

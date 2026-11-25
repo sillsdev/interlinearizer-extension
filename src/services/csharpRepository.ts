@@ -41,10 +41,11 @@ export const HOST_READY_LINE = 'Interlinearizer host ready';
  * names the source project the host has open and the interlinear project in it, which the host must
  * already store. Every record id must be a GUID string, as the host stores ids.
  *
- * The scope's record and the unsaved mark are not stored yet. An apply refuses a change set
- * carrying a scope. It reports the draft as clean. What it reports as applied carries each record
- * as the host stored it, timestamps included. The calls that read the scope or clear the mark
- * throw, as do those that copy or replace the draft whole.
+ * The scope's record is not stored yet. There is no unsaved mark, because every apply is stored at
+ * once: an apply reports the draft as clean, and marking it clean does nothing. An apply refuses a
+ * change set carrying a scope. What it reports as applied carries each record as the host stored
+ * it, timestamps included. The calls that read the scope throw, as do those that copy or replace
+ * the draft whole.
  */
 export class CSharpRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };
@@ -71,8 +72,10 @@ export class CSharpRepository implements AnalysisRepository {
     return this.notStored('exportForCopy');
   }
 
+  /** Nothing, since every apply is stored at once. */
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this -- the seam's method, with nothing to mark
   markClean(): Promise<void> {
-    return this.notStored('markClean');
+    return Promise.resolve();
   }
 
   /** @throws {Error} If the change set carries the scope's record, which the host stores nowhere. */
@@ -83,7 +86,7 @@ export class CSharpRepository implements AnalysisRepository {
       );
     }
     const applied = await this.command<AppliedChangeSet>('apply', { changes });
-    return { applied, wasDirty: false };
+    return { applied, wasDirty: false, dirty: false };
   }
 
   async getWholeDraft(): Promise<DraftProject> {

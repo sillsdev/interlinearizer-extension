@@ -435,7 +435,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     }
     this.current = { draft, index };
     this.anchored = anchored;
-    return { applied: jsonCopy(applied), wasDirty: base.dirty };
+    return { applied: jsonCopy(applied), wasDirty: base.dirty, dirty: draft.dirty };
   }
 
   /**

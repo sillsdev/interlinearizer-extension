@@ -55,7 +55,7 @@ type Step = {
  * {@link MAX_UNDO_STEPS}. Each edit is one step, and a new edit drops every step undone before it.
  *
  * A step holds the changes that undo what the apply reports applied. An undo writes only the fields
- * that its edit changed. A link that a deleted analysis took with it is not restored.
+ * that its edit changed. It also brings back the links that a deleted analysis took with it.
  *
  * A re-anchor pass is no step. A step holds records as they read when it was captured. So what an
  * undo or redo restores is re-anchored to the current text of each book that a pass has re-anchored
@@ -128,6 +128,16 @@ export class EditHistory {
   }
 
   /**
+   * Forgets every step to undo or redo, so that none writes over changes made elsewhere since. The
+   * states the draft was saved with stay saved.
+   */
+  clear(): void {
+    this.undoable.length = 0;
+    this.redoable.length = 0;
+    this.passes.clear();
+  }
+
+  /**
    * Records that the draft's current content is empty, whether that content is saved before this
    * call or after it.
    */
@@ -156,7 +166,7 @@ export class EditHistory {
    */
   async apply(changes: ChangeSet, options?: EditOptions): Promise<AppliedChange> {
     const keep = options?.unsavedMark === 'keep';
-    const { applied, wasDirty } = await this.repository.apply(changes, {
+    const { applied, wasDirty, dirty } = await this.repository.apply(changes, {
       ...(keep && { keepDirty: true }),
       ...(options?.unanchored && { unanchored: options.unanchored }),
     });
@@ -174,7 +184,7 @@ export class EditHistory {
     this.forgetUnneededPasses();
     this.lastState += 1;
     this.state = this.lastState;
-    if (keep && !wasDirty) this.addCleanState();
+    if (!dirty) this.addCleanState();
     if (options?.unsavedMark === 'clear') await this.markRestoredClean();
     return { changes: applied, inverse };
   }

@@ -490,7 +490,7 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
 
         /// <summary>
         /// Adds the changes of this kind to <paramref name="into"/>. A create under an id in
-        /// <paramref name="deleted"/> brings that record back, then writes the fields that differ from it.
+        /// <paramref name="deleted"/> brings that record back and writes the fields that differ from it.
         /// </summary>
         /// <exception cref="ArgumentException">
         /// If a create or update names another project, a create's id is stored, or an update's id
@@ -566,8 +566,9 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
                 }
                 if (deleted.GetValueOrDefault(record.Id) is T asDeleted)
                 {
-                    into.Add(undelete(record.Id));
+                    // Patched first, so that the undelete checks the analysis that the link ends on.
                     if (diff(asDeleted, record) is { } patch) into.Add(patch);
+                    into.Add(undelete(record.Id));
                 }
                 else into.Add(create(record));
                 _putIds.Add(record.Id);

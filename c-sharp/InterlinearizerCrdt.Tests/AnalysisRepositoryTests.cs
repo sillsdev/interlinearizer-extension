@@ -550,6 +550,22 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyBringsBackATakenLinkThatIsCreatedAgainOnAnotherAnalysis()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "deleteAnd", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaAnd) });
+
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "relink",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Create(TokenLink(TlGenAnd, TaUnlinked, "GEN 1:1:0", "and")),
+        });
+
+        await Assert.That(IdsOf(await Repository.FindLinksToAnalyses([TaUnlinked]).ContinueWith(t => t.Result.TokenAnalysisLinks)))
+            .IsEquivalentTo([TlGenAnd]);
+    }
+
+    [Test]
     public async Task ApplyReportsTheLinksADeletedAnalysisTookWithItWholeAsStoredBefore()
     {
         await ApplyNext(FullAnalysis());

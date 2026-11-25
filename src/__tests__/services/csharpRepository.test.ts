@@ -109,6 +109,7 @@ describe('CSharpRepository', () => {
     await expect(repository.apply(changes)).resolves.toStrictEqual({
       applied,
       wasDirty: false,
+      dirty: false,
     });
 
     expect(send).toHaveBeenCalledWith(`${REPOSITORY_COMMAND_PREFIX}apply`, {

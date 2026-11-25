@@ -60,6 +60,35 @@ public class UndeleteChangeTests : CrdtTestBase
     }
 
     [Test]
+    public async Task UndeleteLeavesALinkDeletedWhenADeleteOfItsAnalysisArrivesLateDatedBeforeIt()
+    {
+        await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
+        await WriteNextChange(Fixtures.CreateTokenAnalysisLink(_linkId, _analysisId));
+        await WriteNextChange(new DeleteChange<TokenAnalysisLink>(_linkId));
+        var deleteAt = NextDate();
+        await WriteNextChange(new UndeleteChange<TokenAnalysisLink>(_linkId));
+
+        await WriteChangeAt(deleteAt, [new DeleteChange<TokenAnalysis>(_analysisId)]);
+
+        var link = await DataModel.GetLatest<TokenAnalysisLink>(_linkId);
+        await Assert.That(link!.DeletedAt).IsNotNull();
+    }
+
+    [Test]
+    public async Task UndeleteLeavesAnAnalysisDeletedWhenADeleteOfItsProjectArrivesLateDatedBeforeIt()
+    {
+        await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
+        await WriteNextChange(new DeleteChange<TokenAnalysis>(_analysisId));
+        var deleteAt = NextDate();
+        await WriteNextChange(new UndeleteChange<TokenAnalysis>(_analysisId));
+
+        await WriteChangeAt(deleteAt, [new DeleteChange<InterlinearProject>(ProjectId)]);
+
+        var analysis = await DataModel.GetLatest<TokenAnalysis>(_analysisId);
+        await Assert.That(analysis!.DeletedAt).IsNotNull();
+    }
+
+    [Test]
     public async Task UndeleteKeepsAnEditThatArrivesLateDatedBetweenTheDeleteAndTheUndelete()
     {
         await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));

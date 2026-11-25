@@ -6,6 +6,7 @@ import path from 'path';
 import type { TokenAnalysis } from 'interlinearizer';
 import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../services/csharpRepository';
 import { EditHistory } from '../../services/editHistory';
+import type { ChangeSet } from '../../types/analysis-repository';
 import {
   describeAnalysisRepositoryConformance,
   type ConformanceStore,
@@ -99,6 +100,10 @@ describe('EditHistory over CSharpRepository', () => {
     gloss: { en: 'start' },
   };
   const link = makeTokenLink(analysis.id, 'GEN 1:1:9', { id: crypto.randomUUID() });
+  const glossing: ChangeSet = {
+    intent: 'gloss',
+    tokenAnalyses: updating({ before: analysis, after: { ...analysis, gloss: { en: 'origin' } } }),
+  };
 
   /** A history over a host project holding `analysis` and `link`. */
   async function overLinkedAnalysis() {
@@ -114,13 +119,7 @@ describe('EditHistory over CSharpRepository', () => {
 
   it('undoes an edit, returning the analysis as it was', async () => {
     const { history, repository } = await overLinkedAnalysis();
-    await history.apply({
-      intent: 'gloss',
-      tokenAnalyses: updating({
-        before: analysis,
-        after: { ...analysis, gloss: { en: 'origin' } },
-      }),
-    });
+    await history.apply(glossing);
 
     await history.undo();
 
@@ -128,15 +127,16 @@ describe('EditHistory over CSharpRepository', () => {
     expect(stored.gloss).toStrictEqual({ en: 'start' });
   });
 
+  it('reports an undo as leaving the draft saved', async () => {
+    const { history } = await overLinkedAnalysis();
+    await history.apply(glossing);
+
+    await expect(history.undo()).resolves.toMatchObject({ dirty: false });
+  });
+
   it('redoes an undone edit', async () => {
     const { history, repository } = await overLinkedAnalysis();
-    await history.apply({
-      intent: 'gloss',
-      tokenAnalyses: updating({
-        before: analysis,
-        after: { ...analysis, gloss: { en: 'origin' } },
-      }),
-    });
+    await history.apply(glossing);
     await history.undo();
 
     await history.redo();

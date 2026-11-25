@@ -196,7 +196,8 @@ function applyLinkChanges<T extends { id: string; analysisId: string }>(
   kind: string,
   keyed: readonly string[],
 ): { records: T[]; applied?: AppliedRecords<T> } {
-  const deleted = new Set(deletedAnalyses?.deletes);
+  if (!deletedAnalyses?.deletes.length) return applyRecordChanges(links, changes, kind, keyed);
+  const deleted = new Set(deletedAnalyses.deletes);
   const named = new Set(changes ? idsOf(changes) : []);
   const taken = links.filter(({ id, analysisId }) => deleted.has(analysisId) && !named.has(id));
   if (taken.length === 0) return applyRecordChanges(links, changes, kind, keyed);

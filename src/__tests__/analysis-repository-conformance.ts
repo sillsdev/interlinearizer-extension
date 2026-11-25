@@ -27,7 +27,7 @@ import {
  * - `draftState`: the unsaved mark (`dirty`, `keepDirty`, `wasDirty`, and
  *   {@link AnalysisRepository.markClean}), {@link AnalysisRepository.exportForCopy},
  *   {@link AnalysisRepository.getDraftState}, and {@link AnalysisRepository.findUnlinkedPayloads}.
- *   Without it, `apply` may report `wasDirty: false`, which no other group reads.
+ *   Without it, `apply` may report `wasDirty` and `dirty` as false; no other group reads them.
  * - `wholeRead`: {@link AnalysisRepository.exportAll} and {@link AnalysisRepository.getWholeDraft}
  *   themselves, and loading a draft again through `exportAll` after another repository changes it.
  * - `danglingLinks`: storing a link that names an analysis that the changes leave unstored, and
@@ -1904,6 +1904,25 @@ export function describeAnalysisRepositoryConformance(
               await expect(
                 (await store.open(SOURCE)).apply(translatingExodus()),
               ).resolves.toMatchObject({ wasDirty: dirty });
+            },
+          );
+
+          it('reports the draft as marked unsaved once the apply marks it', async () => {
+            await store.seed(SOURCE, exodusOnlyDraft());
+
+            await expect(
+              (await store.open(SOURCE)).apply(translatingExodus()),
+            ).resolves.toMatchObject({ dirty: true });
+          });
+
+          it.each([false, true])(
+            'reports the unsaved mark it kept when asked to keep the mark, when that mark was %s',
+            async (dirty) => {
+              await store.seed(SOURCE, { ...exodusOnlyDraft(), dirty });
+
+              await expect(
+                (await store.open(SOURCE)).apply(translatingExodus(), { keepDirty: true }),
+              ).resolves.toMatchObject({ dirty });
             },
           );
 

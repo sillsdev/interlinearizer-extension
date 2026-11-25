@@ -154,7 +154,8 @@ export type AppliedChangeSet = {
 export type ApplyOptions = {
   /**
    * Leave the draft as saved or unsaved as it was, for bookkeeping such as a re-anchor pass rather
-   * than an edit. Absent, the draft is marked unsaved.
+   * than an edit. Absent, the draft is marked unsaved. A repository with no unsaved mark ignores
+   * it.
    */
   keepDirty?: boolean;
   /**
@@ -182,6 +183,8 @@ export type ApplyResult = {
   applied: AppliedChangeSet;
   /** Whether the draft was marked unsaved before the changes applied. */
   wasDirty: boolean;
+  /** Whether the draft is marked unsaved once the changes apply. */
+  dirty: boolean;
 };
 
 /** Links of every kind, one list per kind. */
@@ -270,10 +273,13 @@ export interface AnalysisRepository {
   markClean(): Promise<void>;
 
   /**
-   * Applies `changes` to the stored draft whole or not at all, marked unsaved unless `options`
-   * keeps the mark, and stamped with this build's model version. A draft never saved counts as an
+   * Applies `changes` to the stored draft whole or not at all. A draft never saved counts as an
    * empty one. Deleting an analysis also deletes each stored link that names it and that the
    * changes leave alone.
+   *
+   * A repository with an unsaved mark marks the draft unsaved, unless `options` keeps the mark. A
+   * repository that stores the draft's envelope stamps the envelope with this build's model
+   * version.
    *
    * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is applied.
    * @throws {Error} If an id appears more than once in one record kind's changes, an update's

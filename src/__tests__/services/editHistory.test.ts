@@ -481,6 +481,19 @@ describe("EditHistory's unsaved mark", () => {
     await expect(storedDirty()).resolves.toBe(false);
   });
 
+  it('reports an undo as leaving the draft saved when the repository stores every apply as saved', async () => {
+    const { history, repository } = makeHistory();
+    const apply = repository.apply.bind(repository);
+    jest.spyOn(repository, 'apply').mockImplementation(async (changes, options) => ({
+      ...(await apply(changes, options)),
+      wasDirty: false,
+      dirty: false,
+    }));
+    await history.apply(putting('a'));
+
+    await expect(history.undo()).resolves.toMatchObject({ dirty: false });
+  });
+
   it('keeps an undo applied, and the draft unsaved, when marking the draft saved fails', async () => {
     const { history, repository, storedIds, storedDirty } = makeHistory();
     await history.apply(putting('a'));

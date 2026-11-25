@@ -86,7 +86,7 @@ export class CSharpRepository implements AnalysisRepository {
       );
     }
     const applied = await this.command<AppliedChangeSet>('apply', { changes });
-    return { applied, wasDirty: false };
+    return { applied, wasDirty: false, dirty: false };
   }
 
   async getWholeDraft(): Promise<DraftProject> {

@@ -166,7 +166,7 @@ export class EditHistory {
    */
   async apply(changes: ChangeSet, options?: EditOptions): Promise<AppliedChange> {
     const keep = options?.unsavedMark === 'keep';
-    const { applied, wasDirty } = await this.repository.apply(changes, {
+    const { applied, wasDirty, dirty } = await this.repository.apply(changes, {
       ...(keep && { keepDirty: true }),
       ...(options?.unanchored && { unanchored: options.unanchored }),
     });
@@ -184,7 +184,7 @@ export class EditHistory {
     this.forgetUnneededPasses();
     this.lastState += 1;
     this.state = this.lastState;
-    if (keep && !wasDirty) this.addCleanState();
+    if (!dirty) this.addCleanState();
     if (options?.unsavedMark === 'clear') await this.markRestoredClean();
     return { changes: applied, inverse };
   }

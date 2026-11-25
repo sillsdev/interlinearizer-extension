@@ -19,8 +19,8 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
 
     /// <summary>
     /// Applies <paramref name="changes"/> as one commit, so whole or not at all. A create stores its
-    /// record in this project. A create may name a deleted record of its kind in this project; it
-    /// then brings that record back and writes the fields that differ from it. An update writes only the fields that differ between its before and
+    /// record in this project. A create may name a deleted record of its kind in this project; the
+    /// create writes the fields that differ from that record, then brings the record back. An update writes only the fields that differ between its before and
     /// its after, key by key for a multistring or feature map, so a field that another commit
     /// changed since the read stands. An update writes nothing when none differs, and skips a
     /// record not stored. The timestamps a record carries are ignored, because the commit stamps them. A delete
@@ -490,7 +490,7 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
 
         /// <summary>
         /// Adds the changes of this kind to <paramref name="into"/>. A create under an id in
-        /// <paramref name="deleted"/> brings that record back and writes the fields that differ from it.
+        /// <paramref name="deleted"/> writes the fields that differ from the deleted record, then brings that record back.
         /// </summary>
         /// <exception cref="ArgumentException">
         /// If a create or update names another project, a create's id is stored, or an update's id

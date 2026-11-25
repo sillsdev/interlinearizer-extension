@@ -102,7 +102,7 @@ export type RecordUpdate<T> = {
 export type RecordChanges<T> = {
   /**
    * Records to store under ids that no stored record has. A repository that keeps a deleted record
-   * under the id brings that record back, then writes the fields that differ from it.
+   * under the id writes the fields that differ from that record, then brings the record back.
    */
   creates: T[];
   /** Edits to stored records; an edit of a record not stored is skipped. */

@@ -52,6 +52,9 @@ import {
  */
 let phraseLinkMap = new Map<string, PhraseAnalysisLink>();
 
+/** What the mocked `useAnalysisReadOnly` reports; reset in `beforeEach`. */
+let mockReadOnly = false;
+
 /**
  * Replaces the phrase-link map with a copy carrying the given link, so the identity change
  * invalidates the memos keyed on it the way a real link edit does.
@@ -72,7 +75,7 @@ const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().m
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  useAnalysisReadOnly: () => false,
+  useAnalysisReadOnly: () => mockReadOnly,
   SessionAnalysisProvider({
     children,
   }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
@@ -384,6 +387,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  mockReadOnly = false;
   mockKeyAsValueLocalizedStrings();
   scrollIntoViewMock.mockClear();
   tokenLinkIconSpy.mockClear();
@@ -501,6 +505,15 @@ describe('ContinuousView initial render', () => {
 
     const focusedBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     expect(focusedBox).toHaveAttribute('data-focus-state', 'focused');
+  });
+
+  it('marks no phrase as focused in a read-only analysis', () => {
+    mockReadOnly = true;
+    const book = makeBook();
+    renderStrip(book, { focus: 'tok-2' });
+
+    const focusedBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
+    expect(focusedBox).toHaveAttribute('data-focus-state', 'default');
   });
 
   it('falls back to the live focus while the displayed ref names a token this book lacks', () => {

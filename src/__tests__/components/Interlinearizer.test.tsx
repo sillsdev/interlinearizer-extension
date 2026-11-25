@@ -1098,6 +1098,26 @@ describe('Interlinearizer', () => {
     expect(reseededToFirstPortion).toBeUndefined();
   });
 
+  it('shows no focused word in a read-only analysis but keeps the active segment', () => {
+    mockReadOnly = true;
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+    });
+    const second = capturedSegmentViewPropsList.find((p) => p.segment.id === 'GEN 1:2');
+    if (!second?.onSelect) throw new Error('Expected an onSelect for GEN 1:2');
+
+    capturedSegmentViewPropsList = [];
+    act(() => {
+      second.onSelect?.({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
+    });
+
+    expect(capturedSegmentViewPropsList.length).toBeGreaterThan(0);
+    capturedSegmentViewPropsList.forEach((p) => expect(p.focusedTokenRef).toBeUndefined());
+    const active = capturedSegmentViewPropsList.filter((p) => p.isActive);
+    expect(active.at(-1)?.segment.id).toBe('GEN 1:2');
+  });
+
   it('reseeds focus out of a split portion on an external jump to a verse it does not contain', () => {
     // Focus sits in portion "1b" (GEN 1:1:3), which contains verse 1 but not verse 2. A genuine
     // external jump to verse 2 lands outside the focused token's segment, so the containment guard
